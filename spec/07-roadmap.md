@@ -67,14 +67,15 @@ clears the head.
 
 ## Deferred
 
-- **WebGPU / WGSL migration of the web simulator.** Preferred direction for
-  future-proofing, but deliberately coupled to the standalone app adopting Rust +
-  `wgpu`, so that one WGSL source serves both. Migrating the simulator alone would mean
-  three shader dialects instead of two, with no benefit. See `06-standalone-app.md`,
-  "Graphics backend and shader sharing".
 - **Parity test across implementations.** Fixed input parameters with expected output
   UVs, evaluated against each implementation, to catch silent divergence between the
-  shader copies. Cheap, and worth doing regardless of how many dialects remain.
+  shader copies. Cheap, and the mechanism that makes multiple shader dialects safe —
+  worth doing regardless of backend choices.
+- **WebGPU / WGSL migration of the web simulator.** Not adopted. On its own it buys
+  nothing the simulator needs — no performance benefit for a light per-fragment warp,
+  and it risks the single-file no-build property (NFR-3). Revisit only if the standalone
+  app independently chooses Rust + `wgpu`, which would make one shared WGSL source free,
+  or if WebGL2 becomes a genuine liability. See `06-standalone-app.md`.
 - Per-axis game FOV for ultra-wide sources.
 - Baking the warp to a texture instead of solving per fragment.
 - Converting the large PNG asset to JPEG to reclaim roughly 9 MB.
@@ -83,6 +84,11 @@ clears the head.
 
 ## Notes for future work
 
+- **Core functionality outranks code sharing.** Shared shader source across targets is
+  desirable but must never constrain a backend choice or compromise capture, warp, or
+  blend quality. Agreement between implementations is enforced by the normative geometry
+  spec plus parity testing, not by a single source file. Two hand-maintained copies
+  already exist and are manageable.
 - **Retain the shader error hook.** The default engine message omits the actual compile
   error, which made an opaque failure expensive to diagnose. The hook that prints the
   compile log and offending line should stay.

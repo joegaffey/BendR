@@ -93,14 +93,13 @@ FR-28 is partial: the ReShade shader achieves it by injection, with the limits i
 
 ## Constraints
 
-- **C-1 — WebGL2 only.** The web simulator compiles GLSL ES 3.00. Forcing GLSL ES 1.00
-  fails on WebGL2 because `GL_OES_standard_derivatives` is unavailable, which breaks
-  `fwidth()` used by the grid overlay. Consequences: use `in`/`out` rather than
-  `varying`/`attribute`, `texture()` rather than `texture2D()`, a declared output
+- **C-1 — WebGL2 / GLSL ES 3.00.** The web simulator compiles GLSL ES 3.00. Forcing
+  GLSL ES 1.00 fails on WebGL2 because `GL_OES_standard_derivatives` is unavailable,
+  which breaks `fwidth()` used by the grid overlay. Consequences: use `in`/`out` rather
+  than `varying`/`attribute`, `texture()` rather than `texture2D()`, a declared output
   variable rather than `gl_FragColor`, and no scientific-notation float literals.
-  *Applies while the simulator targets WebGL2. The intended direction is WebGPU/WGSL,
-  coupled to the standalone app adopting `wgpu` — see `06-standalone-app.md`,
-  "Graphics backend and shader sharing".*
+  WebGL2 is the current and intended target; see `06-standalone-app.md`, "Web simulator
+  backend", for why WebGPU is not being adopted on its own.
 - **C-2 — Raw shaders.** The simulator uses `RawShaderMaterial` so no engine preamble
   is injected; vertex attributes are declared explicitly.
 - **C-3 — Anti-cheat.** ReShade injection may be flagged by some online titles. Phase 2

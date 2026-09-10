@@ -37,8 +37,11 @@ correct projection without a commercial licence.
 2. **Physical parameters over hand-tweaking.** The user enters measured real-world
    values; correct warp follows from geometry. Manual mesh refinement is an optional
    layer on top, not the primary mechanism.
-3. **Shared math across targets.** The same warp derivation backs the ReShade shader
-   and the future standalone app, so validation carries across.
+3. **Shared math across targets, where it is free.** The warp derivation is normative
+   (`03-geometry.md`) and every target must agree with it. Sharing actual shader *source*
+   between targets is desirable but secondary: it must never constrain the choice of
+   graphics backend or compromise core functionality. Correctness is enforced by the
+   normative spec and parity testing, not by a single source file.
 4. **Behaviour follows geometry, not modes.** Front vs rear projection, aim, and beam
    coverage are derived from position rather than exposed as switches to get wrong.
 
