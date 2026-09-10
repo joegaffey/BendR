@@ -64,6 +64,12 @@ which is not what happens and would invalidate the straightness check.
 | FR-25 | Show the viewer's eye view for correctness checking. | Partial |
 | FR-26 | Use real sim screenshots as warp source content. | Done |
 | FR-27 | Indicate whether the projector beam is occluded by the viewer's head. | Planned |
+| FR-30 | Shadow-casting 3D models of the rig and seated user in the physical scene. | Planned |
+| FR-31 | Render the projected image onto the screen in the physical scene view. | Planned |
+
+FR-30 supersedes FR-27: shadow-casting models make occlusion directly visible rather
+than inferred. FR-31 shares the render-to-texture foundation with FR-25. Both are
+specified in `08-backlog.md`.
 
 FR-25 is partial: the eye view currently reconstructs the frame from the analytic warp
 rather than photographing the projector's actual output texture. Because the warp is

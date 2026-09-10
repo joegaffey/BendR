@@ -27,7 +27,9 @@ Repository: local git only, branch `main`, no remote configured.
 
 ## Next steps
 
-Ordered by dependency, not necessarily by priority.
+Ordered by dependency, not necessarily by priority. Known defects and smaller additions
+are tracked separately in `08-backlog.md`; D-2 (lower views stretch on resize) is a
+correctness issue and should be treated as the immediate fix.
 
 ### 1. Rigorous two-pass eye view
 
@@ -35,6 +37,9 @@ Resolves the FR-25 limitation. Render the projector output to a texture, then ha
 eye photograph the screen with that texture applied. Without this, the eye view cannot
 show a mis-calibration as distorted, which undercuts its value as a correctness check.
 It is also the prerequisite for a viewer-perspective render.
+
+Build alongside FR-31 (projected image on the screen in the 3D view), which needs the
+same render-to-texture foundation.
 
 ### 2. Control-point mesh layer
 
@@ -64,6 +69,9 @@ Implements FR-27. Draw the beam's lower edge and flag intersection with a head v
 the eye-point. The overhead default is shadow-conscious but unverified for tall screens
 or tall users; what matters is that the line from the lens to the bottom of the screen
 clears the head.
+
+Superseded if FR-30 (shadow-casting rig and user models) is implemented instead, which
+shows occlusion directly rather than inferring it. See `08-backlog.md`.
 
 ## Deferred
 

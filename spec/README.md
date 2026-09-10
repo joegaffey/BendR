@@ -12,6 +12,7 @@ edge blending for curved and semi-spherical projection screens.
 | [05-reshade-shader.md](05-reshade-shader.md) | ReShade shader specification |
 | [06-standalone-app.md](06-standalone-app.md) | Phase 2 application specification |
 | [07-roadmap.md](07-roadmap.md) | Current status, next steps, deferred work |
+| [08-backlog.md](08-backlog.md) | Known defects and planned additions |
 
 ## Reading order
 

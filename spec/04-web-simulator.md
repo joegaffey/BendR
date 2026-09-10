@@ -29,7 +29,9 @@ direct port of `reshade/BendR.fx`, so validating here validates the shader.
 
 - Sidebar is a fixed 280 px column and scrolls vertically. Scrolling requires an
   explicit height constraint on the grid item; `overflow-y: auto` alone is not enough.
-- View panes clip their content so canvases cannot push the layout.
+  The scrollbar is currently unstyled — see D-1 in `08-backlog.md`.
+- View panes clip their content so canvases cannot push the layout. The lower panes
+  currently stretch their image on resize — see D-2 in `08-backlog.md`.
 
 ### Physical Scene
 
@@ -42,6 +44,10 @@ Orbit-controlled 3D view of the rig:
 
 The screen arc, projector cone, and frustum are rebuilt when their parameters change.
 Marker orientation follows `03-geometry.md` "Orientation of visual markers".
+
+Planned additions to this view: the warped image rendered onto the screen surface
+(FR-31), and shadow-casting models of the rig and seated user (FR-30). See
+`08-backlog.md`.
 
 ### Projector Output
 
