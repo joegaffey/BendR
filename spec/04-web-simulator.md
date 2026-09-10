@@ -102,6 +102,11 @@ A dropdown selects either a procedural test pattern or a real sim screenshot.
   Assetto Corsa, rFactor 2, Dirt Rally (cockpit and bonnet). Sourced from the
   `joegaffey/muscled` project.
 
+All seven screenshots are **triple-monitor captures**, with aspect ratios from 4.8 to 5.6
+rather than a single display's ~1.78. They are currently sampled whole as the game frame,
+so the source is roughly three times too wide for the assumed projection. Region selection
+and a matching source FOV are required — see D-3 in `08-backlog.md`.
+
 Textures load with sRGB colour space, linear filtering, and clamp-to-edge for
 non-power-of-two sizes. `flipY` is disabled because the shader already flips Y to match
 the top-left origin of `srcUV`; leaving both enabled double-flips the image.

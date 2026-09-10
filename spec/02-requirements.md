@@ -63,6 +63,7 @@ which is not what happens and would invalidate the straightness check.
 | FR-24 | Show the projector's emitted (pre-distorted) image. | Done |
 | FR-25 | Show the viewer's eye view for correctness checking. | Partial |
 | FR-26 | Use real sim screenshots as warp source content. | Done |
+| FR-32 | Select which region of the source image is treated as the game frame, with a matching source FOV. | Planned |
 | FR-27 | Indicate whether the projector beam is occluded by the viewer's head. | Planned |
 | FR-30 | Shadow-casting 3D models of the rig and seated user in the physical scene. | Planned |
 | FR-31 | Render the projected image onto the screen in the physical scene view. | Planned |
@@ -127,5 +128,7 @@ FR-28 is partial: the ReShade shader achieves it by injection, with the limits i
 - **AC-3** Changing screen radius, arc, or height leaves the projector aimed at screen
   centre and the beam covering the screen while auto-aim and auto-fit are enabled.
 - **AC-4** Selecting any bundled screenshot warps it in correct orientation.
+- **AC-7** With a triple-screen source and centre-third region selected, the warped result
+  represents a single-projector view at the stated source FOV.
 - **AC-5** Shader compiles with no errors or warnings on a WebGL2 browser.
 - **AC-6** The control sidebar scrolls when its content exceeds the viewport.
