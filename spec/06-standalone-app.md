@@ -44,7 +44,7 @@ single-projector, latency-sensitive, offline use.
 | Platform | Windows | Where the sims run |
 | Capture | DXGI Desktop Duplication | Low overhead, stays GPU-side |
 | Rendering | Direct3D 11 | Mature, simplest path for this workload |
-| Language | Rust or C++ | Rust for build and dependency hygiene via the `windows` crate; C++ for the larger body of D3D examples. Undecided. |
+| Language | Rust, leaning `wgpu` | See "Graphics backend and shader sharing" below. Rust for build and dependency hygiene; `wgpu` for shader sharing with a WebGPU web simulator. C++ + D3D11 remains the fallback if `wgpu` proves awkward for Desktop Duplication interop. |
 | Warp | Textured control-point mesh | Frame as texture, vertices define the warp |
 | Blend | Pixel shader | Alpha ramp, black level, gamma in overlap |
 | Config | JSON | Parameters plus mesh offsets |
@@ -90,6 +90,69 @@ A draggable canvas is impractical in ReShade, which offers only parameter rows.
 - The analytic solve runs independently per projector; blending is the only genuinely
   new math relative to Phase 1.
 
+## Graphics backend and shader sharing
+
+**Direction: WebGPU, for future-proofing.** This couples the web simulator's graphics
+API to the app's language choice, so the two decisions are made together.
+
+### The problem
+
+Principle 3 in `01-overview.md` is that the same warp math backs every target. Today
+that is convention, not enforcement — there are two hand-maintained copies that agree
+only because `03-geometry.md` is normative:
+
+| Target | Shader language |
+|---|---|
+| `reshade/BendR.fx` | HLSL |
+| `web/index.html` | GLSL ES 3.00 (WebGL2) |
+
+At roughly 150 lines of shader this is manageable, but silent divergence is possible.
+
+### Why WebGPU changes the calculus
+
+Adding WGSL to the current stack in isolation would make things worse: three dialects
+instead of two, with WGSL sharing the least with the others. WGSL differs in kind, not
+just in naming — mandatory type annotations, `vec3<f32>` forms, explicit
+`@group`/`@binding` resource declarations, no implicit numeric conversions, separate
+texture and sampler bindings, and no user-defined function overloading. That last point
+is concrete for BendR: the scalar and vector overloads of the degrees-to-radians helper
+would have to become two differently named functions.
+
+The gain only materialises if the standalone app uses the same shader language. With
+Rust and `wgpu`, which targets Windows via D3D12 or Vulkan:
+
+```
+web    (WebGPU) ─┐
+                 ├─ one shared WGSL source
+native (wgpu)   ─┘
+
+reshade         ─── HLSL (unavoidable; ReShade's own format)
+```
+
+That is one shared shader plus ReShade's HLSL — better sharing than the two hand-synced
+copies that exist now, and the reason to prefer this direction.
+
+### Consequences
+
+- **The web simulator would move from WebGL2 to WebGPU**, superseding constraint C-1.
+  The GLSL ES 3.00 rules recorded there stop applying to a WGSL implementation, but they
+  remain correct for as long as the WebGL2 version exists.
+- **NFR-3 is at risk.** WebGPU and WGSL setup is heavier than a single CDN import, so
+  the single-file, no-build property may not survive. Worth protecting if possible.
+- **No performance motivation.** The warp is a light per-fragment ray-trace on a
+  fullscreen quad and is not a bottleneck. The case for WebGPU here is code sharing and
+  longevity, not speed. Compute shaders would only become relevant for baking warp-map
+  textures.
+- **Sequencing.** Do not migrate the web simulator alone; that incurs the cost with none
+  of the benefit. Migrate when the app commits to `wgpu`.
+
+### Parity checking
+
+Regardless of how many dialects remain, the practical safeguard against silent
+divergence is a parity test rather than transpilation: a fixed set of input parameters
+with expected output UVs, evaluated against every implementation. Transpilers such as
+Tint, naga, or SPIRV-Cross exist but are disproportionate for a shader this size.
+
 ## Build order
 
 Each milestone should be independently verifiable.
@@ -115,7 +178,10 @@ single-projector use. Milestone 5 is the first capability ReShade cannot provide
 
 ## Open questions
 
-- Rust or C++.
+- Whether `wgpu` interoperates cleanly with DXGI Desktop Duplication, which is the main
+  risk to the Rust + `wgpu` direction. If it does not, the fallback is C++ + D3D11, which
+  forfeits shader sharing with the web simulator.
+- Whether the WebGPU migration can preserve the single-file, no-build property (NFR-3).
 - Whether to solve the warp per fragment or bake a warp-map texture.
 - Whether the mesh editor UI is in-app or a separate configuration tool.
 - Whether to support capturing a single window rather than the whole desktop.

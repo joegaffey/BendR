@@ -67,6 +67,14 @@ clears the head.
 
 ## Deferred
 
+- **WebGPU / WGSL migration of the web simulator.** Preferred direction for
+  future-proofing, but deliberately coupled to the standalone app adopting Rust +
+  `wgpu`, so that one WGSL source serves both. Migrating the simulator alone would mean
+  three shader dialects instead of two, with no benefit. See `06-standalone-app.md`,
+  "Graphics backend and shader sharing".
+- **Parity test across implementations.** Fixed input parameters with expected output
+  UVs, evaluated against each implementation, to catch silent divergence between the
+  shader copies. Cheap, and worth doing regardless of how many dialects remain.
 - Per-axis game FOV for ultra-wide sources.
 - Baking the warp to a texture instead of solving per fragment.
 - Converting the large PNG asset to JPEG to reclaim roughly 9 MB.
