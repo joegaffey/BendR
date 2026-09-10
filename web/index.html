@@ -94,6 +94,18 @@ function applyAutoAim(){
   P.projRoll  = 0.0;
 }
 
+// Sim screenshots (copied from muscled). Label -> path. "Test Grid" = synthetic.
+const GAME_IMAGES = {
+  'Test Grid (synthetic)': null,
+  'iRacing': 'assets/images/iracing.jpg',
+  'Project Cars': 'assets/images/pcars.png',
+  'Project Cars 2': 'assets/images/racing1.jpg',
+  'Assetto Corsa': 'assets/images/ac1.jpg',
+  'rFactor 2': 'assets/images/rfactor2_1.jpg',
+  'Dirt Rally (Cockpit)': 'assets/images/dirtrally_cockpit4.jpg',
+  'Dirt Rally (Bonnet)': 'assets/images/dirtrally_g44.jpg',
+};
+
 const SLIDER_DEFS = [
   ['Screen', [
     ['screenRadius','Radius (m)',0.3,5,0.01],
@@ -150,6 +162,24 @@ for (const [cat, items] of SLIDER_DEFS) {
     slidersEl.appendChild(row);
   }
 }
+
+// game image selector (dropdown)
+{
+  const h=document.createElement('div'); h.className='cat'; h.textContent='Source Image';
+  slidersEl.appendChild(h);
+  const row=document.createElement('div'); row.className='row';
+  const l=document.createElement('label'); l.textContent='Game';
+  const sel=document.createElement('select');
+  sel.style.flex='1.4';
+  for(const name in GAME_IMAGES){
+    const opt=document.createElement('option'); opt.value=name; opt.textContent=name;
+    sel.appendChild(opt);
+  }
+  sel.addEventListener('change',()=>{ loadGameImage(GAME_IMAGES[sel.value]); });
+  row.appendChild(l); row.appendChild(sel);
+  slidersEl.appendChild(row);
+}
+
 // auto-aim checkbox
 {
   const row=document.createElement('div'); row.className='row check';
@@ -209,6 +239,8 @@ const WARP_GLSL = `
   uniform float uProjHFovDeg, uProjAspect;
   uniform float uGridLines, uShowGrid;
   uniform float uMode; // 0 = projector output, 1 = eye view
+  uniform sampler2D uGameTex; // loaded sim screenshot
+  uniform float uUseTex;      // 1 = sample uGameTex, 0 = synthetic checker
 
   const float PI = 3.14159265358979;
   float d2r(float d){ return d*PI/180.0; }
@@ -249,9 +281,13 @@ const WARP_GLSL = `
     return -1.0;
   }
 
-  // Build a simulated "game frame": a checker + grid test pattern.
+  // Game frame: either a loaded sim screenshot (uUseTex) or a synthetic pattern.
   vec3 gameFrame(vec2 uv){
     if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0) return vec3(0.0);
+    if(uUseTex>0.5){
+      // texture origin is bottom-left in GL; our srcUV is top-left, so flip Y.
+      return texture2D(uGameTex, vec2(uv.x, 1.0-uv.y)).rgb;
+    }
     // checkerboard
     vec2 c=floor(uv*8.0);
     float chk=mod(c.x+c.y,2.0);
@@ -334,6 +370,9 @@ const VERT = `
 // ------------------------------------------------------------------
 // Two fullscreen-quad renderers (projector output + eye view)
 // ------------------------------------------------------------------
+// Shared game-source texture (a loaded sim screenshot). Null until one loads.
+let gameTexture=null;
+
 function makeQuadRenderer(canvas, mode){
   const renderer=new THREE.WebGLRenderer({canvas, antialias:true});
   const scene=new THREE.Scene();
@@ -345,6 +384,7 @@ function makeQuadRenderer(canvas, mode){
     uProjRotDeg:{value:new THREE.Vector3()}, uProjHFovDeg:{value:P.projHFovDeg},
     uProjAspect:{value:P.projAspect}, uGridLines:{value:P.gridLines},
     uShowGrid:{value:P.showGrid}, uMode:{value:mode},
+    uGameTex:{value:null}, uUseTex:{value:0.0},
   };
   const mat=new THREE.ShaderMaterial({vertexShader:VERT, fragmentShader:WARP_GLSL, uniforms,
     glslVersion: THREE.GLSL1});
@@ -368,11 +408,33 @@ function makeQuadRenderer(canvas, mode){
       uniforms.uProjAspect.value=P.projAspect;
       uniforms.uGridLines.value=P.gridLines;
       uniforms.uShowGrid.value=P.showGrid;
+      uniforms.uGameTex.value=gameTexture;
+      uniforms.uUseTex.value=gameTexture?1.0:0.0;
     }};
 }
 
 const projView=makeQuadRenderer(document.getElementById('projCanvas'),0.0);
 const eyeView =makeQuadRenderer(document.getElementById('eyeCanvas'),1.0);
+
+// Load a sim screenshot as the warp source. Pass null to revert to the test grid.
+const _texLoader=new THREE.TextureLoader();
+function loadGameImage(path){
+  if(!path){ // synthetic test grid
+    if(gameTexture){ gameTexture.dispose(); gameTexture=null; }
+    updateAll();
+    return;
+  }
+  _texLoader.load(path, (tex)=>{
+    tex.colorSpace=THREE.SRGBColorSpace;
+    tex.minFilter=THREE.LinearFilter;   // non power-of-two images
+    tex.magFilter=THREE.LinearFilter;
+    tex.wrapS=tex.wrapT=THREE.ClampToEdgeWrapping;
+    if(gameTexture) gameTexture.dispose();
+    gameTexture=tex;
+    updateAll();
+  }, undefined, (err)=>{ console.error('Failed to load', path, err); });
+}
+
 
 // ------------------------------------------------------------------
 // 3D scene: room with cylinder screen, projector frustum, eye marker
