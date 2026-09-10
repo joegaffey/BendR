@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BendR — Bend Renderer (Web Demo)</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --line:#30363d; --text:#c9d1d9; --accent:#3fb950; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font-family: system-ui, sans-serif; overflow:hidden; }
+  #app { display:grid; grid-template-columns: 280px 1fr; height:100vh; }
+  #controls { background:var(--panel); border-right:1px solid var(--line);
+              padding:12px; overflow-y:auto; }
+  #controls h1 { font-size:15px; margin:0 0 2px; color:#fff; }
+  #controls .sub { font-size:11px; color:#8b949e; margin-bottom:12px; }
+  .cat { font-size:11px; text-transform:uppercase; letter-spacing:.5px;
+         color:var(--accent); margin:14px 0 6px; border-bottom:1px solid var(--line);
+         padding-bottom:3px; }
+  .row { display:flex; align-items:center; justify-content:space-between; margin:5px 0; gap:8px; }
+  .row label { font-size:12px; flex:1; }
+  .row input[type=range] { flex:1.4; }
+  .row .val { font-size:11px; width:44px; text-align:right; color:#8b949e; }
+  .row.check { justify-content:flex-start; gap:8px; }
+  #views { display:grid; grid-template-rows: 1.4fr 1fr; }
+  #scene { position:relative; border-bottom:1px solid var(--line); }
+  #lower { display:grid; grid-template-columns:1fr 1fr; }
+  .canvaswrap { position:relative; }
+  .canvaswrap + .canvaswrap { border-left:1px solid var(--line); }
+  .tag { position:absolute; top:6px; left:8px; font-size:11px; background:rgba(0,0,0,.55);
+         padding:2px 6px; border-radius:4px; z-index:2; }
+  canvas { display:block; width:100%; height:100%; }
+  .hint { font-size:11px; color:#8b949e; margin-top:10px; line-height:1.4; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="controls">
+    <h1>BendR</h1>
+    <div class="sub">Bend Renderer — off-axis cylinder demo</div>
+    <div id="sliders"></div>
+    <div class="hint">
+      Drag in the 3D view to orbit. Tune the params so the <b>Eye View</b> grid looks
+      straight &amp; even — that's a correct warp. The <b>Projector Output</b> shows the
+      pre-distorted image the projector must emit.
+    </div>
+  </div>
+  <div id="views">
+    <div id="scene"><div class="tag">Physical Scene (orbit to inspect)</div></div>
+    <div id="lower">
+      <div class="canvaswrap"><div class="tag">Projector Output (emitted)</div>
+        <canvas id="projCanvas"></canvas></div>
+      <div class="canvaswrap"><div class="tag">Eye View (should be straight)</div>
+        <canvas id="eyeCanvas"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ------------------------------------------------------------------
+// Parameters (mirror BendR.fx). Origin = cylinder axis. Meters, degrees.
+// ------------------------------------------------------------------
+const P = {
+  screenRadius: 1.5, screenHeight: 1.0, screenArcDeg: 150.0,
+  eyeX: 0.0, eyeY: 0.0, eyeZ: 0.0, gameHFovDeg: 90.0,
+  projX: 0.0, projY: 0.6, projZ: -1.3,
+  projYaw: 0.0, projPitch: -15.0, projRoll: 0.0,
+  projHFovDeg: 90.0, projAspect: 1.777,
+  autoAim: 1.0,        // when on, projector yaw/pitch auto-point at screen center
+  gridLines: 12.0, showGrid: 1.0,
+};
+
+// Auto-aim: point the projector at the screen center (0,0,screenRadius on +Z).
+// Overwrites projYaw/projPitch from the projector position when enabled.
+function applyAutoAim(){
+  if(P.autoAim < 0.5) return;
+  const target = {x:0, y:0, z:P.screenRadius};
+  const dx = target.x - P.projX;
+  const dy = target.y - P.projY;
+  const dz = target.z - P.projZ;
+  const horiz = Math.sqrt(dx*dx + dz*dz);
+  P.projYaw   = THREE.MathUtils.radToDeg(Math.atan2(dx, dz));   // about Y
+  P.projPitch = THREE.MathUtils.radToDeg(Math.atan2(dy, horiz)); // about X
+  P.projRoll  = 0.0;
+}
+
+const SLIDER_DEFS = [
+  ['Screen', [
+    ['screenRadius','Radius (m)',0.3,5,0.01],
+    ['screenHeight','Height (m)',0.3,4,0.01],
+    ['screenArcDeg','Arc (deg)',30,270,1],
+  ]],
+  ['Eye-point', [
+    ['eyeX','Eye X (m)',-3,3,0.01],
+    ['eyeY','Eye Y (m)',-3,3,0.01],
+    ['eyeZ','Eye Z (m)',-3,3,0.01],
+    ['gameHFovDeg','Game FOV (deg)',30,160,0.5],
+  ]],
+  ['Projector', [
+    ['projX','Pos X (m)',-4,4,0.01],
+    ['projY','Pos Y (m)',-4,4,0.01],
+    ['projZ','Pos Z (m)',-4,4,0.01],
+    ['projYaw','Yaw (deg)',-60,60,0.1],
+    ['projPitch','Pitch (deg)',-60,60,0.1],
+    ['projRoll','Roll (deg)',-60,60,0.1],
+    ['projHFovDeg','Proj FOV (deg)',20,150,0.5],
+    ['projAspect','Aspect',1,2.5,0.001],
+  ]],
+  ['Calibration', [
+    ['gridLines','Grid Lines',4,32,1],
+  ]],
+];
+
+// ------------------------------------------------------------------
+// Build control panel
+// ------------------------------------------------------------------
+const slidersEl = document.getElementById('sliders');
+const valEls = {};
+const sliderEls = {};
+for (const [cat, items] of SLIDER_DEFS) {
+  const h = document.createElement('div'); h.className='cat'; h.textContent=cat;
+  slidersEl.appendChild(h);
+  for (const [key,label,min,max,step] of items) {
+    const row = document.createElement('div'); row.className='row';
+    const l = document.createElement('label'); l.textContent=label;
+    const r = document.createElement('input'); r.type='range';
+    r.min=min; r.max=max; r.step=step; r.value=P[key];
+    const v = document.createElement('span'); v.className='val'; v.textContent=P[key];
+    valEls[key]=v;
+    sliderEls[key]=r;
+    r.addEventListener('input',()=>{
+      P[key]=parseFloat(r.value); v.textContent=(+r.value).toFixed(2);
+      updateAll();
+      // If a projector-position slider moved while auto-aim is on, the computed
+      // yaw/pitch changed too — reflect that back into their sliders.
+      if(P.autoAim>=0.5 && (key==='projX'||key==='projY'||key==='projZ'||key==='screenRadius'))
+        syncSlidersToParams();
+    });
+    row.appendChild(l); row.appendChild(r); row.appendChild(v);
+    slidersEl.appendChild(row);
+  }
+}
+// auto-aim checkbox
+{
+  const row=document.createElement('div'); row.className='row check';
+  const c=document.createElement('input'); c.type='checkbox'; c.checked=true;
+  const l=document.createElement('label'); l.textContent='Auto-aim at screen center';
+  c.addEventListener('change',()=>{
+    P.autoAim=c.checked?1:0;
+    setAimSlidersDisabled(c.checked);
+    updateAll();
+    syncSlidersToParams();  // reflect computed yaw/pitch back into sliders
+  });
+  row.appendChild(c); row.appendChild(l); slidersEl.appendChild(row);
+}
+
+// show grid checkbox
+{
+  const row=document.createElement('div'); row.className='row check';
+  const c=document.createElement('input'); c.type='checkbox'; c.checked=true;
+  const l=document.createElement('label'); l.textContent='Show Calibration Grid';
+  c.addEventListener('change',()=>{ P.showGrid=c.checked?1:0; updateAll(); });
+  row.appendChild(c); row.appendChild(l); slidersEl.appendChild(row);
+}
+
+// Enable/disable the manual aim sliders (yaw/pitch/roll) when auto-aim toggles.
+function setAimSlidersDisabled(disabled){
+  for(const key of ['projYaw','projPitch','projRoll']){
+    const el=sliderEls[key];
+    if(el){ el.disabled=disabled; el.parentElement.style.opacity=disabled?0.45:1; }
+  }
+}
+
+// Push current P values back into the slider inputs + labels (used after auto-aim
+// recomputes yaw/pitch, or any programmatic change).
+function syncSlidersToParams(){
+  for(const key in sliderEls){
+    const el=sliderEls[key];
+    if(el && el.value!=String(P[key])){ el.value=P[key]; }
+    if(valEls[key]) valEls[key].textContent=(+P[key]).toFixed(2);
+  }
+}
+
+// Init: auto-aim is on by default, so disable the manual aim sliders and compute aim.
+setAimSlidersDisabled(true);
+applyAutoAim();
+syncSlidersToParams();
+
+// ------------------------------------------------------------------
+// Shared GLSL: the warp math (ports from BendR.fx)
+// ------------------------------------------------------------------
+const WARP_GLSL = `
+  precision highp float;
+  varying vec2 vUv;
+  uniform float uScreenRadius, uScreenHeight, uScreenArcDeg;
+  uniform vec3  uEyePos;
+  uniform float uGameHFovDeg;
+  uniform vec3  uProjPos, uProjRotDeg;
+  uniform float uProjHFovDeg, uProjAspect;
+  uniform float uGridLines, uShowGrid;
+  uniform float uMode; // 0 = projector output, 1 = eye view
+
+  const float PI = 3.14159265358979;
+  float d2r(float d){ return d*PI/180.0; }
+
+  mat3 rotYPR(vec3 ypr){
+    float cy=cos(ypr.x), sy=sin(ypr.x);
+    float cp=cos(ypr.y), sp=sin(ypr.y);
+    float cr=cos(ypr.z), sr=sin(ypr.z);
+    mat3 Ry=mat3( cy,0.0,sy, 0.0,1.0,0.0, -sy,0.0,cy);
+    mat3 Rp=mat3(1.0,0.0,0.0, 0.0,cp,-sp, 0.0,sp,cp);
+    mat3 Rr=mat3( cr,-sr,0.0, sr,cr,0.0, 0.0,0.0,1.0);
+    return Ry*Rp*Rr;
+  }
+
+  bool inBounds(vec3 S){
+    float ang=atan(S.x, S.z);
+    float halfArc=d2r(uScreenArcDeg)*0.5;
+    return abs(ang)<=halfArc && abs(S.y)<=uScreenHeight*0.5;
+  }
+
+  // Nearest valid intersection of ray (o,d) with the vertical cylinder, choosing
+  // the closest positive hit that lies within the screen arc + height. This makes
+  // the warp correct for ANY projector placement: a front projector inside the
+  // cylinder hits the far wall; a rear projector outside enters the near wall first.
+  // Returns t (>0) via out-ish pattern; -1.0 if neither root is valid.
+  float intersectCylinderY(vec3 o, vec3 d, float R){
+    vec2 oc=o.xz, dc=d.xz;
+    float a=dot(dc,dc), b=2.0*dot(oc,dc), c=dot(oc,oc)-R*R;
+    float disc=b*b-4.0*a*c;
+    if(disc<0.0||a<1e-8) return -1.0;
+    float sq=sqrt(disc);
+    float t0=(-b-sq)/(2.0*a), t1=(-b+sq)/(2.0*a);
+    // order so ta <= tb
+    float ta=min(t0,t1), tb=max(t0,t1);
+    // Prefer the nearest positive hit that is within the physical screen bounds.
+    if(ta>1e-4 && inBounds(o+ta*d)) return ta;
+    if(tb>1e-4 && inBounds(o+tb*d)) return tb;
+    return -1.0;
+  }
+
+  // Build a simulated "game frame": a checker + grid test pattern.
+  vec3 gameFrame(vec2 uv){
+    if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0) return vec3(0.0);
+    // checkerboard
+    vec2 c=floor(uv*8.0);
+    float chk=mod(c.x+c.y,2.0);
+    vec3 col=mix(vec3(0.15,0.17,0.22), vec3(0.28,0.32,0.4), chk);
+    // colored border
+    if(uv.x<0.02||uv.x>0.98||uv.y<0.02||uv.y>0.98) col=vec3(0.9,0.3,0.1);
+    // center crosshair
+    if(abs(uv.x-0.5)<0.004||abs(uv.y-0.5)<0.004) col=vec3(0.2,0.7,1.0);
+    return col;
+  }
+
+  void addGrid(inout vec3 col, vec2 uv){
+    if(uShowGrid<0.5) return;
+    vec2 g=uv*uGridLines;
+    vec2 f=abs(fract(g)-0.5);
+    vec2 df=fwidth(g);
+    float m=1.0-clamp(min(f.x/df.x, f.y/df.y),0.0,1.0);
+    col=mix(col, vec3(0.25,1.0,0.35), m*0.9);
+  }
+
+  // For a screen point S, get the source UV as seen from the eye.
+  vec2 eyeUV(vec3 S){
+    vec3 viewDir=normalize(S-uEyePos);
+    if(viewDir.z<=1e-4) return vec2(-1.0);
+    float gTanH=tan(d2r(uGameHFovDeg)*0.5);
+    float gTanV=gTanH/uProjAspect;
+    vec2 img=vec2(viewDir.x/viewDir.z/gTanH, viewDir.y/viewDir.z/gTanV);
+    return vec2(img.x*0.5+0.5, -img.y*0.5+0.5);
+  }
+
+  void main(){
+    if(uMode<0.5){
+      // ---- PROJECTOR OUTPUT: for each projector pixel -> warped source ----
+      vec2 ndc=vUv*2.0-1.0; ndc.y=-ndc.y;
+      // Rear projection: projector sits OUTSIDE the cylinder (its distance from the
+      // Y axis exceeds the screen radius). Light passes through the screen to the
+      // viewer, so the emitted image must be mirrored left-right. Flip ndc.x.
+      float projAxisDist=length(uProjPos.xz);
+      bool rear = projAxisDist > uScreenRadius;
+      if(rear) ndc.x = -ndc.x;
+      float tanH=tan(d2r(uProjHFovDeg)*0.5);
+      float tanV=tanH/uProjAspect;
+      vec3 rayLocal=normalize(vec3(ndc.x*tanH, ndc.y*tanV, 1.0));
+      mat3 R=rotYPR(d2r(uProjRotDeg));
+      vec3 rayWorld=normalize(R*rayLocal);
+      float t=intersectCylinderY(uProjPos, rayWorld, uScreenRadius);
+      if(t<0.0){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); return; }
+      vec3 S=uProjPos+t*rayWorld;
+      if(!inBounds(S)){ gl_FragColor=vec4(0.02,0.02,0.03,1.0); return; }
+      vec2 srcUV=eyeUV(S);
+      vec3 col=gameFrame(srcUV);
+      addGrid(col, srcUV);
+      gl_FragColor=vec4(col,1.0);
+    } else {
+      // ---- EYE VIEW: for each eye pixel -> ray -> screen -> what's painted there ----
+      vec2 ndc=vUv*2.0-1.0; ndc.y=-ndc.y;
+      float gTanH=tan(d2r(uGameHFovDeg)*0.5);
+      float gTanV=gTanH/uProjAspect;
+      vec3 rayLocal=normalize(vec3(ndc.x*gTanH, ndc.y*gTanV, 1.0));
+      // eye looks straight down +Z (no eye rotation in this demo)
+      float t=intersectCylinderY(uEyePos, rayLocal, uScreenRadius);
+      if(t<0.0){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); return; }
+      vec3 S=uEyePos+t*rayLocal;
+      if(!inBounds(S)){ gl_FragColor=vec4(0.02,0.02,0.03,1.0); return; }
+      // What did the projector paint at S? Ideal warp => exactly gameFrame(eyeUV(S)).
+      // Since our warp is analytic & consistent, the eye sees the undistorted frame.
+      vec2 srcUV=eyeUV(S);
+      vec3 col=gameFrame(srcUV);
+      addGrid(col, srcUV);
+      gl_FragColor=vec4(col,1.0);
+    }
+  }
+`;
+
+const VERT = `
+  varying vec2 vUv;
+  void main(){ vUv=uv; gl_Position=vec4(position,1.0); }
+`;
+
+// ------------------------------------------------------------------
+// Two fullscreen-quad renderers (projector output + eye view)
+// ------------------------------------------------------------------
+function makeQuadRenderer(canvas, mode){
+  const renderer=new THREE.WebGLRenderer({canvas, antialias:true});
+  const scene=new THREE.Scene();
+  const cam=new THREE.Camera();
+  const uniforms={
+    uScreenRadius:{value:P.screenRadius}, uScreenHeight:{value:P.screenHeight},
+    uScreenArcDeg:{value:P.screenArcDeg}, uEyePos:{value:new THREE.Vector3()},
+    uGameHFovDeg:{value:P.gameHFovDeg}, uProjPos:{value:new THREE.Vector3()},
+    uProjRotDeg:{value:new THREE.Vector3()}, uProjHFovDeg:{value:P.projHFovDeg},
+    uProjAspect:{value:P.projAspect}, uGridLines:{value:P.gridLines},
+    uShowGrid:{value:P.showGrid}, uMode:{value:mode},
+  };
+  const mat=new THREE.ShaderMaterial({vertexShader:VERT, fragmentShader:WARP_GLSL, uniforms,
+    glslVersion: THREE.GLSL1});
+  const quad=new THREE.Mesh(new THREE.PlaneGeometry(2,2), mat);
+  scene.add(quad);
+  return {renderer, scene, cam, uniforms,
+    render(){
+      const w=canvas.clientWidth, h=canvas.clientHeight;
+      if(canvas.width!==w||canvas.height!==h) renderer.setSize(w,h,false);
+      renderer.render(scene,cam);
+    },
+    sync(){
+      uniforms.uScreenRadius.value=P.screenRadius;
+      uniforms.uScreenHeight.value=P.screenHeight;
+      uniforms.uScreenArcDeg.value=P.screenArcDeg;
+      uniforms.uEyePos.value.set(P.eyeX,P.eyeY,P.eyeZ);
+      uniforms.uGameHFovDeg.value=P.gameHFovDeg;
+      uniforms.uProjPos.value.set(P.projX,P.projY,P.projZ);
+      uniforms.uProjRotDeg.value.set(P.projYaw,P.projPitch,P.projRoll);
+      uniforms.uProjHFovDeg.value=P.projHFovDeg;
+      uniforms.uProjAspect.value=P.projAspect;
+      uniforms.uGridLines.value=P.gridLines;
+      uniforms.uShowGrid.value=P.showGrid;
+    }};
+}
+
+const projView=makeQuadRenderer(document.getElementById('projCanvas'),0.0);
+const eyeView =makeQuadRenderer(document.getElementById('eyeCanvas'),1.0);
+
+// ------------------------------------------------------------------
+// 3D scene: room with cylinder screen, projector frustum, eye marker
+// ------------------------------------------------------------------
+const sceneEl=document.getElementById('scene');
+const sr=new THREE.WebGLRenderer({antialias:true});
+sr.setClearColor(0x0d1117);
+sceneEl.appendChild(sr.domElement);
+sr.domElement.style.width='100%'; sr.domElement.style.height='100%';
+
+const scene3=new THREE.Scene();
+const cam3=new THREE.PerspectiveCamera(50,1,0.01,100);
+cam3.position.set(3,2.2,4.5);
+const controls=new OrbitControls(cam3, sr.domElement);
+controls.target.set(0,0,0.5);
+
+scene3.add(new THREE.AmbientLight(0xffffff,0.6));
+const dl=new THREE.DirectionalLight(0xffffff,0.8); dl.position.set(3,5,4); scene3.add(dl);
+scene3.add(new THREE.GridHelper(10,20,0x30363d,0x21262d));
+scene3.add(new THREE.AxesHelper(0.8));
+
+// Cylinder screen (arc segment, open, double-sided)
+let screenMesh=null;
+function rebuildScreen(){
+  if(screenMesh){ scene3.remove(screenMesh); screenMesh.geometry.dispose(); }
+  const arc=THREE.MathUtils.degToRad(P.screenArcDeg);
+  // Center the arc on +Z (where the eye/projector look). The previous +PI/2 term
+  // rotated the arc a quarter-turn onto the X axis, causing a 90-degree mismatch.
+  const geo=new THREE.CylinderGeometry(
+    P.screenRadius, P.screenRadius, P.screenHeight, 64, 1, true,
+    -arc/2, arc);
+  const mat=new THREE.MeshStandardMaterial({color:0x8899aa, side:THREE.DoubleSide,
+    metalness:0.0, roughness:0.9, transparent:true, opacity:0.5});
+  screenMesh=new THREE.Mesh(geo,mat);
+  scene3.add(screenMesh);
+}
+rebuildScreen();
+
+// Eye marker
+const eye=new THREE.Mesh(new THREE.SphereGeometry(0.06,16,16),
+  new THREE.MeshStandardMaterial({color:0x3fb950}));
+scene3.add(eye);
+const eyeLabelDir=new THREE.ArrowHelper(new THREE.Vector3(0,0,1),
+  new THREE.Vector3(), 0.6, 0x3fb950);
+scene3.add(eyeLabelDir);
+
+// Projector marker + frustum lines.
+// ConeGeometry's axis is +Y by default; rotate the geometry so it points down +Z,
+// matching the shader's projector-forward convention. Then the Euler pose aims it
+// exactly like the frustum lines.
+const projConeGeo=new THREE.ConeGeometry(0.06,0.16,16);
+projConeGeo.rotateX(Math.PI/2);           // +Y axis -> +Z axis
+projConeGeo.translate(0,0,-0.08);         // put tip at the lens origin, body behind
+const proj=new THREE.Mesh(projConeGeo,
+  new THREE.MeshStandardMaterial({color:0xf0883e}));
+scene3.add(proj);
+let frustum=null;
+
+// Build the projector's world-space forward direction from its pose.
+// In auto-aim mode this points at the screen center; otherwise it's derived
+// from yaw/pitch the same way the shader does (Ry*Rp applied to local +Z).
+function projForward(){
+  if(P.autoAim>=0.5){
+    return new THREE.Vector3(0,0,P.screenRadius)
+      .sub(new THREE.Vector3(P.projX,P.projY,P.projZ)).normalize();
+  }
+  const yaw=THREE.MathUtils.degToRad(P.projYaw);
+  const pitch=THREE.MathUtils.degToRad(P.projPitch);
+  // Match shader rotYPR (Ry*Rp*Rr) acting on (0,0,1); roll doesn't change forward.
+  // Rp about X: (0,0,1) -> (0, sin(pitch)... ) careful with sign to match shader.
+  // Shader Rp = [[1,0,0],[0,cp,-sp],[0,sp,cp]] ; Rp*(0,0,1) = (0,-sp,cp)
+  const cp=Math.cos(pitch), sp=Math.sin(pitch);
+  let v=new THREE.Vector3(0,-sp,cp);
+  // Ry = [[cy,0,sy],[0,1,0],[-sy,0,cy]] ; apply to v
+  const cy=Math.cos(yaw), sy=Math.sin(yaw);
+  v=new THREE.Vector3(cy*v.x+sy*v.z, v.y, -sy*v.x+cy*v.z);
+  return v.normalize();
+}
+
+// Build a robust quaternion rotating local +Z onto `dir`.
+// setFromUnitVectors is degenerate when dir is ~antiparallel to +Z (happens for
+// rear projection, where forward points toward -Z): it picks an arbitrary axis,
+// so tiny X/Y moves make the roll/yaw snap around. We instead build a stable
+// orthonormal basis (lookAt-style) with a fallback up vector near the poles.
+function quatForward(dir){
+  const z=dir.clone().normalize();               // forward
+  let up=new THREE.Vector3(0,1,0);
+  if(Math.abs(z.dot(up))>0.999) up=new THREE.Vector3(0,0,1); // near vertical -> pick another up
+  const x=new THREE.Vector3().crossVectors(up, z).normalize(); // right
+  const y=new THREE.Vector3().crossVectors(z, x).normalize();  // true up
+  const m=new THREE.Matrix4().makeBasis(x, y, z);
+  return new THREE.Quaternion().setFromRotationMatrix(m);
+}
+
+// Orient a mesh so its local +Z points along `dir`.
+function orientZ(mesh, dir){
+  mesh.setRotationFromQuaternion(quatForward(dir));
+}
+
+function rebuildFrustum(){
+  if(frustum){ scene3.remove(frustum); frustum.geometry.dispose(); }
+  const tanH=Math.tan(THREE.MathUtils.degToRad(P.projHFovDeg)*0.5);
+  const tanV=tanH/P.projAspect;
+  const L=P.screenRadius*2.2;
+  const corners=[
+    new THREE.Vector3( tanH, tanV,1).multiplyScalar(L),
+    new THREE.Vector3(-tanH, tanV,1).multiplyScalar(L),
+    new THREE.Vector3(-tanH,-tanV,1).multiplyScalar(L),
+    new THREE.Vector3( tanH,-tanV,1).multiplyScalar(L),
+  ];
+  // Rotate local +Z to the projector forward direction (robust quaternion).
+  const q=quatForward(projForward());
+  const pos=new THREE.Vector3(P.projX,P.projY,P.projZ);
+  const pts=[];
+  for(const c of corners){ pts.push(pos.clone()); pts.push(c.clone().applyQuaternion(q).add(pos)); }
+  // rectangle at far end
+  const fc=corners.map(c=>c.clone().applyQuaternion(q).add(pos));
+  for(let i=0;i<4;i++){ pts.push(fc[i]); pts.push(fc[(i+1)%4]); }
+  const g=new THREE.BufferGeometry().setFromPoints(pts);
+  frustum=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0xf0883e}));
+  scene3.add(frustum);
+}
+rebuildFrustum();
+
+function update3D(){
+  eye.position.set(P.eyeX,P.eyeY,P.eyeZ);
+  eyeLabelDir.position.set(P.eyeX,P.eyeY,P.eyeZ);
+  proj.position.set(P.projX,P.projY,P.projZ);
+  orientZ(proj, projForward());   // cone local +Z -> forward direction
+}
+
+// ------------------------------------------------------------------
+// Master update + render loop
+// ------------------------------------------------------------------
+let needScreenRebuild=false, needFrustumRebuild=false;
+let last={arc:P.screenArcDeg, r:P.screenRadius, h:P.screenHeight,
+          pf:P.projHFovDeg, pa:P.projAspect};
+function updateAll(){
+  applyAutoAim();  // recompute projector aim from position before syncing views
+  if(P.screenArcDeg!==last.arc||P.screenRadius!==last.r||P.screenHeight!==last.h){
+    needScreenRebuild=true; last.arc=P.screenArcDeg; last.r=P.screenRadius; last.h=P.screenHeight;
+  }
+  if(P.projHFovDeg!==last.pf||P.projAspect!==last.pa){
+    needFrustumRebuild=true; last.pf=P.projHFovDeg; last.pa=P.projAspect;
+  }
+  needFrustumRebuild=true; // pose changes cheaply; rebuild each edit
+  projView.sync(); eyeView.sync(); update3D();
+}
+updateAll();
+
+function resize3(){
+  const w=sceneEl.clientWidth, h=sceneEl.clientHeight;
+  sr.setSize(w,h,false); cam3.aspect=w/h; cam3.updateProjectionMatrix();
+}
+window.addEventListener('resize',resize3); resize3();
+
+function loop(){
+  if(needScreenRebuild){ rebuildScreen(); needScreenRebuild=false; }
+  if(needFrustumRebuild){ rebuildFrustum(); needFrustumRebuild=false; }
+  controls.update();
+  sr.render(scene3,cam3);
+  projView.render();
+  eyeView.render();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>

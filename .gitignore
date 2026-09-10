@@ -1,0 +1,16 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# Node / build (Phase 2 app, if added later)
+node_modules/
+dist/
+build/
+*.log
+
+# Local calibration saves (user-specific)
+*.local.json
