@@ -21,7 +21,7 @@ single projector. See `../docs/geometry.md` for the underlying math.
    <game folder>\reshade-shaders\Shaders\BendR.fx
    ```
 3. Launch the game on the projector display.
-4. Open the ReShade overlay (default `Home` key) and enable **BendR — Bend Renderer**.
+4. Open the ReShade overlay (default `Home` key) and enable **BendR — Bend Reality**.
 
 ## Calibration (one-time on a fixed rig)
 

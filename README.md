@@ -1,4 +1,4 @@
-# BendR — Bend Renderer
+# BendR — Bend Reality
 
 Free, geometry-driven **mesh warping + edge blending** for curved and semi-spherical
 projection screens, aimed at flight/racing/sim rigs. Works with **any game or sim**.

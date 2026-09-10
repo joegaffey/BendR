@@ -2,7 +2,7 @@
 
 ## Purpose
 
-BendR (**Bend Renderer**) is free, geometry-driven mesh warping and edge blending for
+BendR (**Bend Reality**) is free, geometry-driven mesh warping and edge blending for
 curved and semi-spherical projection screens, aimed at flight/racing simulator rigs.
 
 Commercial screen-warping software (Vioso, Scalable Display, Fly Elise-ng) is priced

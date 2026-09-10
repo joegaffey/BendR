@@ -1,4 +1,4 @@
-// BendR.fx — Bend Renderer
+// BendR.fx — Bend Reality
 // Analytic off-axis cylindrical warp for ReShade (single projector).
 //
 // Phase 1 of BendR. Corrects the final rendered frame so that a game/sim looks
@@ -236,7 +236,7 @@ float4 PS_BendR(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
 }
 
 technique BendR <
-    ui_label = "BendR — Bend Renderer";
+    ui_label = "BendR — Bend Reality";
     ui_tooltip = "Off-axis cylindrical warp for sim rigs.";
 >
 {

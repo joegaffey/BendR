@@ -1,6 +1,6 @@
 # BendR Specification
 
-Specification set for BendR (Bend Renderer) — free, geometry-driven mesh warping and
+Specification set for BendR (Bend Reality) — free, geometry-driven mesh warping and
 edge blending for curved and semi-spherical projection screens.
 
 | Document | Contents |
