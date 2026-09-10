@@ -64,11 +64,18 @@ across multiple projectors, which is out of scope for ReShade.
 ```
 BendR/
 ├── README.md          # this file
+├── spec/              # specification set (start at spec/README.md)
 ├── reshade/           # Phase 1: BendR.fx analytic warp shader
+├── web/               # web simulator / calibration sandbox
 ├── docs/
 │   └── geometry.md     # the warp math, derivations, coordinate conventions
 └── app/               # Phase 2: standalone capture/warp/blend app (later)
 ```
+
+## Specification
+
+See [`spec/`](spec/README.md). For the core idea, read `spec/01-overview.md` then
+`spec/03-geometry.md`, which is the normative reference for the warp derivation.
 
 ## Roadmap
 
