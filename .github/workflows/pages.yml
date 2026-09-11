@@ -30,6 +30,10 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          # Let the action enable Pages (build_type=workflow) if it isn't already,
+          # using the workflow's GITHUB_TOKEN (pages: write) instead of the UI toggle.
+          enablement: true
 
       - name: Upload web/ as Pages artifact
         uses: actions/upload-pages-artifact@v3
