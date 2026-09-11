@@ -3,6 +3,10 @@
 Free, geometry-driven **mesh warping + edge blending** for curved and semi-spherical
 projection screens, aimed at flight/racing/sim rigs. Works with **any game or sim**.
 
+### ▶ [Try the live simulator](https://joegaffey.github.io/BendR/)
+
+Tune projector pose, screen geometry, and eye-point in the browser — no install required.
+
 BendR exists because commercial screen-warping software (Vioso, Scalable Display,
 Fly Elise-ng, etc.) is expensive — while the underlying math is a well-understood
 ray-trace. For a fixed sim rig the warp is essentially static once calibrated, so
