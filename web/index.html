@@ -11,7 +11,14 @@
          font-family: system-ui, sans-serif; overflow:hidden; }
   #app { display:grid; grid-template-columns: 280px 1fr; height:100vh; }
   #controls { background:var(--panel); border-right:1px solid var(--line);
-              padding:12px; overflow-y:auto; height:100%; min-height:0; }
+              padding:12px; overflow-y:auto; height:100%; min-height:0;
+              scrollbar-width: thin; scrollbar-color: #484f58 var(--panel); }
+  /* Chromium/WebKit equivalent of the above, matched to the dark panel (D-1). */
+  #controls::-webkit-scrollbar { width:10px; }
+  #controls::-webkit-scrollbar-track { background:var(--panel); }
+  #controls::-webkit-scrollbar-thumb { background:#484f58; border-radius:5px;
+              border:2px solid var(--panel); }
+  #controls::-webkit-scrollbar-thumb:hover { background:#5b636d; }
   #controls h1 { font-size:15px; margin:0 0 2px; color:#fff; }
   #controls .sub { font-size:11px; color:#8b949e; margin-bottom:12px; }
   .cat { font-size:11px; text-transform:uppercase; letter-spacing:.5px;
@@ -71,13 +78,13 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // Parameters (mirror BendR.fx). Origin = cylinder axis. Meters, degrees.
 // ------------------------------------------------------------------
 const P = {
-  screenRadius: 1.5, screenHeight: 1.0, screenArcDeg: 150.0,
-  eyeX: 0.0, eyeY: 0.0, eyeZ: 0.0, gameHFovDeg: 90.0,
-  projX: 0.0, projY: 0.6, projZ: -1.3,
+  screenRadius: 1.5, screenHeight: 1.5, screenArcDeg: 150.0, screenBase: 0.45,
+  eyeX: 0.0, eyeY: 1.2, eyeZ: 0.0, gameHFovDeg: 90.0,
+  sourceAspect: 1.777,
+  projX: 0.0, projY: 2.2, projZ: -1.3,
   projYaw: 0.0, projPitch: -15.0, projRoll: 0.0,
   projHFovDeg: 90.0, projAspect: 1.777,
   autoAim: 1.0,        // when on, projector yaw/pitch auto-point at screen center
-  autoFit: 1.0,        // when on, projector FOV auto-widens to cover the screen
   gridLines: 12.0, showGrid: 1.0,
 };
 
@@ -85,7 +92,7 @@ const P = {
 // Overwrites projYaw/projPitch from the projector position when enabled.
 function applyAutoAim(){
   if(P.autoAim < 0.5) return;
-  const target = {x:0, y:0, z:P.screenRadius};
+  const target = {x:0, y:P.screenBase + P.screenHeight*0.5, z:P.screenRadius};
   const dx = target.x - P.projX;
   const dy = target.y - P.projY;
   const dz = target.z - P.projZ;
@@ -93,41 +100,6 @@ function applyAutoAim(){
   P.projYaw   = THREE.MathUtils.radToDeg(Math.atan2(dx, dz));   // about Y
   P.projPitch = THREE.MathUtils.radToDeg(Math.atan2(dy, horiz)); // about X
   P.projRoll  = 0.0;
-}
-
-// Auto-fit the projector FOV so the beam covers the whole screen. Without this,
-// changing screen radius/arc/height can leave every ray outside the screen bounds,
-// making the lower views go black.
-function applyAutoFit(){
-  if(P.autoFit < 0.5) return;
-  const pp=new THREE.Vector3(P.projX,P.projY,P.projZ);
-  const halfArc=THREE.MathUtils.degToRad(P.screenArcDeg)*0.5;
-  const fwd=new THREE.Vector3(0,0,P.screenRadius).sub(pp).normalize();
-  // Sample points around the screen edge; find the max angle from the aim axis.
-  let maxAngH=0, maxAngV=0;
-  for(let i=0;i<=16;i++){
-    const a=-halfArc+(2*halfArc)*(i/16);
-    for(const yy of [-P.screenHeight*0.5, 0, P.screenHeight*0.5]){
-      const S=new THREE.Vector3(Math.sin(a)*P.screenRadius, yy, Math.cos(a)*P.screenRadius);
-      const d=S.clone().sub(pp);
-      if(d.lengthSq()<1e-9) continue;
-      d.normalize();
-      // decompose angle into horizontal / vertical components about the aim axis
-      const along=d.dot(fwd);
-      if(along<=0.0) continue;             // behind the projector
-      const ang=Math.acos(Math.min(1,Math.max(-1,along)));
-      // split by whether the offset is mostly horizontal or vertical
-      const perp=d.clone().sub(fwd.clone().multiplyScalar(along));
-      const vert=Math.abs(perp.y);
-      const horizComp=Math.sqrt(Math.max(0, perp.lengthSq()-vert*vert));
-      if(horizComp>=vert) maxAngH=Math.max(maxAngH, ang);
-      else                maxAngV=Math.max(maxAngV, ang);
-    }
-  }
-  // Convert half-angles to a horizontal FOV, with a small margin.
-  const halfH=Math.max(maxAngH, maxAngV*P.projAspect)*1.06;
-  let fov=THREE.MathUtils.radToDeg(halfH*2.0);
-  P.projHFovDeg=Math.min(150, Math.max(20, fov));
 }
 
 // Sim screenshots (copied from muscled). Label -> path. "Test Grid" = synthetic.
@@ -146,23 +118,24 @@ const SLIDER_DEFS = [
   ['Screen', [
     ['screenRadius','Radius (m)',0.3,5,0.01],
     ['screenHeight','Height (m)',0.3,4,0.01],
+    ['screenBase','Base Height (m)',0,2,0.01],
     ['screenArcDeg','Arc (deg)',30,270,1],
   ]],
   ['Eye-point', [
     ['eyeX','Eye X (m)',-3,3,0.01],
-    ['eyeY','Eye Y (m)',-3,3,0.01],
+    ['eyeY','Eye Height (m)',0,3,0.01],
     ['eyeZ','Eye Z (m)',-3,3,0.01],
     ['gameHFovDeg','Game FOV (deg)',30,160,0.5],
   ]],
   ['Projector', [
     ['projX','Pos X (m)',-4,4,0.01],
-    ['projY','Pos Y (m)',-4,4,0.01],
+    ['projY','Height (m)',0,4,0.01],
     ['projZ','Pos Z (m)',-4,4,0.01],
     ['projYaw','Yaw (deg)',-60,60,0.1],
     ['projPitch','Pitch (deg)',-60,60,0.1],
     ['projRoll','Roll (deg)',-60,60,0.1],
     ['projHFovDeg','Proj FOV (deg)',20,150,0.5],
-    ['projAspect','Aspect',1,2.5,0.001],
+    ['projAspect','Panel Aspect',1,2.5,0.001],
   ]],
   ['Calibration', [
     ['gridLines','Grid Lines',4,32,1],
@@ -175,31 +148,79 @@ const SLIDER_DEFS = [
 const slidersEl = document.getElementById('sliders');
 const valEls = {};
 const sliderEls = {};
+
+// Standard display aspect ratios, offered as presets for both the projector panel
+// and the game source signal. "" = Custom (free slider value, no preset match).
+const ASPECT_PRESETS=[
+  ['16:9 (1.78)', 16/9],
+  ['16:10 (1.60)', 16/10],
+  ['21:9 (2.33)', 21/9],
+  ['32:9 (3.56)', 32/9],
+  ['4:3 (1.33)', 4/3],
+  ['1:1', 1.0],
+];
+
+// Build a preset dropdown bound to an aspect parameter, kept two-way in sync with
+// that parameter's slider. Appended directly under the slider it controls.
+function appendAspectDropdown(key, labelText){
+  const row=document.createElement('div'); row.className='row';
+  const l=document.createElement('label'); l.textContent=labelText;
+  const sel=document.createElement('select'); sel.style.flex='1.4';
+  const custom=document.createElement('option'); custom.value=''; custom.textContent='Custom';
+  sel.appendChild(custom);
+  for(const [name,val] of ASPECT_PRESETS){
+    const opt=document.createElement('option'); opt.value=String(val); opt.textContent=name;
+    sel.appendChild(opt);
+  }
+  const reflect=()=>{
+    const v=P[key]; let match='';
+    for(const [,val] of ASPECT_PRESETS){ if(Math.abs(val-v)<0.005){ match=String(val); break; } }
+    sel.value=match;
+  };
+  reflect();
+  sel.addEventListener('change',()=>{
+    if(sel.value==='') return;             // "Custom" is display-only
+    P[key]=parseFloat(sel.value);
+    const el=sliderEls[key];
+    if(el){ el.value=P[key]; valEls[key].textContent=P[key].toFixed(2); }
+    updateAll();
+  });
+  const sliderEl=sliderEls[key];
+  if(sliderEl) sliderEl.addEventListener('input', reflect);
+  row.appendChild(l); row.appendChild(sel); slidersEl.appendChild(row);
+}
+
 for (const [cat, items] of SLIDER_DEFS) {
   const h = document.createElement('div'); h.className='cat'; h.textContent=cat;
   slidersEl.appendChild(h);
   for (const [key,label,min,max,step] of items) {
-    const row = document.createElement('div'); row.className='row';
-    const l = document.createElement('label'); l.textContent=label;
-    const r = document.createElement('input'); r.type='range';
-    r.min=min; r.max=max; r.step=step; r.value=P[key];
-    const v = document.createElement('span'); v.className='val'; v.textContent=P[key];
-    valEls[key]=v;
-    sliderEls[key]=r;
-    r.addEventListener('input',()=>{
-      P[key]=parseFloat(r.value); v.textContent=(+r.value).toFixed(2);
-      updateAll();
-      // Auto-aim/auto-fit derive yaw/pitch/FOV from position + screen shape —
-      // reflect those computed values back into their sliders.
-      if((P.autoAim>=0.5 || P.autoFit>=0.5) &&
-         (key==='projX'||key==='projY'||key==='projZ'||
-          key==='screenRadius'||key==='screenArcDeg'||key==='screenHeight'||
-          key==='projAspect'))
-        syncSlidersToParams();
-    });
-    row.appendChild(l); row.appendChild(r); row.appendChild(v);
-    slidersEl.appendChild(row);
+    appendSlider(key,label,min,max,step);
+    // Aspect params get a preset dropdown directly beneath their slider.
+    if(key==='projAspect')   appendAspectDropdown('projAspect','Panel Preset');
   }
+}
+
+// Build one slider row for parameter `key` and register it in sliderEls/valEls.
+function appendSlider(key,label,min,max,step){
+  const row = document.createElement('div'); row.className='row';
+  const l = document.createElement('label'); l.textContent=label;
+  const r = document.createElement('input'); r.type='range';
+  r.min=min; r.max=max; r.step=step; r.value=P[key];
+  const v = document.createElement('span'); v.className='val'; v.textContent=P[key];
+  valEls[key]=v;
+  sliderEls[key]=r;
+  r.addEventListener('input',()=>{
+    P[key]=parseFloat(r.value); v.textContent=(+r.value).toFixed(2);
+    updateAll();
+    // Auto-aim derives yaw/pitch from projector position and screen shape —
+    // reflect those computed values back into their sliders.
+    if(P.autoAim>=0.5 &&
+       (key==='projX'||key==='projY'||key==='projZ'||
+        key==='screenRadius'||key==='screenHeight'||key==='screenBase'))
+      syncSlidersToParams();
+  });
+  row.appendChild(l); row.appendChild(r); row.appendChild(v);
+  slidersEl.appendChild(row);
 }
 
 // game image selector (dropdown)
@@ -217,6 +238,9 @@ for (const [cat, items] of SLIDER_DEFS) {
   sel.addEventListener('change',()=>{ loadGameImage(GAME_IMAGES[sel.value]); });
   row.appendChild(l); row.appendChild(sel);
   slidersEl.appendChild(row);
+  // Signal aspect belongs with the source image, not the eye-point.
+  appendSlider('sourceAspect','Signal Aspect',1,6,0.001);
+  appendAspectDropdown('sourceAspect','Signal Preset');
 }
 
 // auto-aim checkbox
@@ -229,21 +253,6 @@ for (const [cat, items] of SLIDER_DEFS) {
     setAimSlidersDisabled(c.checked);
     updateAll();
     syncSlidersToParams();  // reflect computed yaw/pitch back into sliders
-  });
-  row.appendChild(c); row.appendChild(l); slidersEl.appendChild(row);
-}
-
-// auto-fit FOV checkbox
-{
-  const row=document.createElement('div'); row.className='row check';
-  const c=document.createElement('input'); c.type='checkbox'; c.checked=true;
-  const l=document.createElement('label'); l.textContent='Auto-fit FOV to screen';
-  c.addEventListener('change',()=>{
-    P.autoFit=c.checked?1:0;
-    const el=sliderEls['projHFovDeg'];
-    if(el){ el.disabled=c.checked; el.parentElement.style.opacity=c.checked?0.45:1; }
-    updateAll();
-    syncSlidersToParams();
   });
   row.appendChild(c); row.appendChild(l); slidersEl.appendChild(row);
 }
@@ -275,14 +284,9 @@ function syncSlidersToParams(){
   }
 }
 
-// Init: auto-aim/auto-fit are on by default, so disable their manual sliders.
+// Init: auto-aim is on by default, so disable its manual yaw/pitch/roll sliders.
 setAimSlidersDisabled(true);
-{
-  const el=sliderEls['projHFovDeg'];
-  if(el){ el.disabled=true; el.parentElement.style.opacity=0.45; }
-}
 applyAutoAim();
-applyAutoFit();
 syncSlidersToParams();
 
 // ------------------------------------------------------------------
@@ -292,14 +296,18 @@ const WARP_GLSL = `precision highp float;
 in vec2 vUv;
 out vec4 fragColor;
   uniform float uScreenRadius, uScreenHeight, uScreenArcDeg;
+  uniform float uScreenBase; // height of the screen's bottom edge above the floor
   uniform vec3  uEyePos;
   uniform float uGameHFovDeg;
+  uniform float uSourceAspect; // game source frame aspect (w/h); governs UV sampling
   uniform vec3  uProjPos, uProjRotDeg;
   uniform float uProjHFovDeg, uProjAspect;
+  uniform float uPaneAspect; // canvas (pane) width/height, for letter/pillarboxing
   uniform float uGridLines, uShowGrid;
-  uniform float uMode; // 0 = projector output, 1 = eye view
+  uniform float uMode; // 0 = projector output, 1 = eye view (single-pass analytic)
   uniform sampler2D uGameTex; // loaded sim screenshot
   uniform float uUseTex;      // 1 = sample uGameTex, 0 = synthetic checker
+  uniform float uTexAspect;   // loaded texture's own aspect (w/h), for center-crop
 
   const float PI = 3.14159265358979;
   float d2r(float d){ return d*PI/180.0; }
@@ -318,7 +326,8 @@ out vec4 fragColor;
   bool inBounds(vec3 S){
     float ang=atan(S.x, S.z);
     float halfArc=d2r(uScreenArcDeg)*0.5;
-    return abs(ang)<=halfArc && abs(S.y)<=uScreenHeight*0.5;
+    // Screen is mounted above the floor: y spans uScreenBase .. uScreenBase+uScreenHeight.
+    return abs(ang)<=halfArc && S.y>=uScreenBase && S.y<=uScreenBase+uScreenHeight;
   }
 
   // Nearest valid intersection of ray (o,d) with the vertical cylinder, choosing
@@ -342,46 +351,100 @@ out vec4 fragColor;
   }
 
   // Game frame: either a loaded sim screenshot (uUseTex) or a synthetic pattern.
+  // uv is the 0..1 source-frame coordinate (already at uSourceAspect). When the
+  // loaded texture's own aspect differs, center-crop it to uSourceAspect so the
+  // frame keeps its true shape instead of stretching (clip, not squash).
   vec3 gameFrame(vec2 uv){
     if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0) return vec3(0.0);
     if(uUseTex>0.5){
+      vec2 t=uv;
+      if(uTexAspect > uSourceAspect){
+        // texture wider than source frame -> crop left/right
+        float s=uSourceAspect/uTexAspect;   // <1
+        t.x = 0.5 + (uv.x-0.5)*s;
+      } else {
+        // texture taller than source frame -> crop top/bottom
+        float s=uTexAspect/uSourceAspect;   // <=1
+        t.y = 0.5 + (uv.y-0.5)*s;
+      }
       // texture origin is bottom-left in GL; our srcUV is top-left, so flip Y.
-      return texture(uGameTex, vec2(uv.x, 1.0-uv.y)).rgb;
+      return texture(uGameTex, vec2(t.x, 1.0-t.y)).rgb;
     }
-    // checkerboard
-    vec2 c=floor(uv*8.0);
+    // checkerboard. Scale x by uSourceAspect so cells are square in the frame's
+    // true proportions (the source frame is uSourceAspect wide : 1 tall).
+    vec2 cellUV=vec2(uv.x*uSourceAspect, uv.y);
+    vec2 c=floor(cellUV*8.0);
     float chk=mod(c.x+c.y,2.0);
     vec3 col=mix(vec3(0.15,0.17,0.22), vec3(0.28,0.32,0.4), chk);
     // colored border
     if(uv.x<0.02||uv.x>0.98||uv.y<0.02||uv.y>0.98) col=vec3(0.9,0.3,0.1);
-    // center crosshair
-    if(abs(uv.x-0.5)<0.004||abs(uv.y-0.5)<0.004) col=vec3(0.2,0.7,1.0);
+    // center crosshair (equal on-frame thickness on both axes)
+    if(abs((uv.x-0.5)*uSourceAspect)<0.004||abs(uv.y-0.5)<0.004) col=vec3(0.2,0.7,1.0);
     return col;
   }
 
   void addGrid(inout vec3 col, vec2 uv){
     if(uShowGrid<0.5) return;
-    vec2 g=uv*uGridLines;
+    // Square cells: more divisions horizontally in proportion to the frame aspect.
+    vec2 g=vec2(uv.x*uSourceAspect, uv.y)*uGridLines;
     vec2 f=abs(fract(g)-0.5);
     vec2 df=fwidth(g);
     float m=1.0-clamp(min(f.x/df.x, f.y/df.y),0.0,1.0);
     col=mix(col, vec3(0.25,1.0,0.35), m*0.9);
   }
 
+  // Does the projector actually illuminate world point S, and where on its panel?
+  // This is the inverse of the projector-output ray cast: bring S into projector-
+  // local space, perspective-divide to panel NDC, and test against the panel bounds.
+  // Returns true if lit; sets ndcOut to the panel NDC (before rear mirror). Used by
+  // the eye view so the panel aspect's bars/clip appear on the screen as the eye
+  // would see them, without a second render pass.
+  bool projPanelLit(vec3 S, out vec2 ndcOut){
+    vec3 rel=S-uProjPos;
+    // World -> projector-local: inverse rotation is the transpose of rotYPR.
+    mat3 Rt=transpose(rotYPR(d2r(uProjRotDeg)));
+    vec3 local=Rt*rel;
+    if(local.z<=0.0001) return false;        // behind the projector
+    float tanH=tan(d2r(uProjHFovDeg)*0.5);
+    float tanV=tanH/uProjAspect;
+    vec2 ndc=vec2(local.x/local.z/tanH, local.y/local.z/tanV);
+    ndcOut=ndc;
+    return abs(ndc.x)<=1.0 && abs(ndc.y)<=1.0; // inside the panel rectangle
+  }
+
   // For a screen point S, get the source UV as seen from the eye.
+  // The source frame's vertical FOV follows its own aspect (uSourceAspect),
+  // independent of the projector panel aspect.
   vec2 eyeUV(vec3 S){
     vec3 viewDir=normalize(S-uEyePos);
     if(viewDir.z<=0.0001) return vec2(-1.0);
     float gTanH=tan(d2r(uGameHFovDeg)*0.5);
-    float gTanV=gTanH/uProjAspect;
+    float gTanV=gTanH/uSourceAspect;
     vec2 img=vec2(viewDir.x/viewDir.z/gTanH, viewDir.y/viewDir.z/gTanV);
     return vec2(img.x*0.5+0.5, -img.y*0.5+0.5);
   }
+
+  // Fit an image of aspect imgAspect (w/h) into a pane of aspect uPaneAspect,
+  // preserving the image's true shape. Maps pane NDC (-1..1) to image NDC by
+  // widening the axis that has spare room (pillarbox if the pane is wider than the
+  // image, letterbox if taller). Points landing outside the image return |ndc|>1
+  // on some axis, which the caller paints as background.
+  vec2 fitNDC(vec2 ndc, float imgAspect){
+    if(uPaneAspect > imgAspect) ndc.x *= uPaneAspect/imgAspect; // pane wider -> pillarbox
+    else                        ndc.y *= imgAspect/uPaneAspect; // pane taller -> letterbox
+    return ndc;
+  }
+  bool outsideImage(vec2 ndc){ return abs(ndc.x)>1.0 || abs(ndc.y)>1.0; }
+  const vec4 kBg = vec4(0.0,0.0,0.0,1.0); // letter/pillarbox fill
 
   void main(){
     if(uMode<0.5){
       // ---- PROJECTOR OUTPUT: for each projector pixel -> warped source ----
       vec2 ndc=vUv*2.0-1.0; ndc.y=-ndc.y;
+      // Keep the projector's true image aspect regardless of the pane aspect,
+      // filling the spare pane area with background (D-2).
+      ndc=fitNDC(ndc, uProjAspect);
+      if(outsideImage(ndc)){ fragColor=kBg; return; }
       // Rear projection: projector sits OUTSIDE the cylinder (its distance from the
       // Y axis exceeds the screen radius). Light passes through the screen to the
       // viewer, so the emitted image must be mirrored left-right. Flip ndc.x.
@@ -402,18 +465,30 @@ out vec4 fragColor;
       addGrid(col, srcUV);
       fragColor=vec4(col,1.0);
     } else {
-      // ---- EYE VIEW: for each eye pixel -> ray -> screen -> what's painted there ----
+      // ---- EYE VIEW (single-pass, analytic): eye pixel -> ray -> screen point S ->
+      // the source UV the eye would see there. This samples the game directly, so it
+      // ALWAYS shows the ideal (undistorted) warp — it cannot show mis-calibration as
+      // distortion. That is a known limitation; the correct fix is a screen-space
+      // two-pass eye view (see spec/07-roadmap.md). It does show panel bars/clip via
+      // projPanelLit, which is correct on its own.
       vec2 ndc=vUv*2.0-1.0; ndc.y=-ndc.y;
-      float gTanH=tan(d2r(uGameHFovDeg)*0.5);
-      float gTanV=gTanH/uProjAspect;
+      // The eye has no frame or aspect — it just looks at the screen. Its field of
+      // view is a fixed property of the viewer: it must NOT change with the signal
+      // aspect or the pane shape. Anchor the vertical FOV on a fixed reference and
+      // widen the horizontal fan to fill the pane. Off-screen areas show background.
+      const float kEyeRefAspect=1.777;                          // fixed viewer framing
+      float gTanV=tan(d2r(uGameHFovDeg)*0.5)/kEyeRefAspect;     // fixed vertical half-FOV
+      float gTanH=gTanV*uPaneAspect;                            // widen to fill the pane
       vec3 rayLocal=normalize(vec3(ndc.x*gTanH, ndc.y*gTanV, 1.0));
       // eye looks straight down +Z (no eye rotation in this demo)
       float t=intersectCylinderY(uEyePos, rayLocal, uScreenRadius);
       if(t<0.0){ fragColor=vec4(0.0,0.0,0.0,1.0); return; }
       vec3 S=uEyePos+t*rayLocal;
       if(!inBounds(S)){ fragColor=vec4(0.02,0.02,0.03,1.0); return; }
-      // What did the projector paint at S? Ideal warp => exactly gameFrame(eyeUV(S)).
-      // Since our warp is analytic & consistent, the eye sees the undistorted frame.
+      // Is this part of the screen lit by the projector? Outside the panel -> unlit.
+      vec2 panelNDC;
+      if(!projPanelLit(S, panelNDC)){ fragColor=vec4(0.0,0.0,0.0,1.0); return; }
+      // The eye sees the (idealised) game the projector painted at S.
       vec2 srcUV=eyeUV(S);
       vec3 col=gameFrame(srcUV);
       addGrid(col, srcUV);
@@ -434,6 +509,7 @@ const VERT = `
 // ------------------------------------------------------------------
 // Shared game-source texture (a loaded sim screenshot). Null until one loads.
 let gameTexture=null;
+let gameTexAspect=1.777; // aspect of the loaded texture; used to center-crop to sourceAspect
 
 function makeQuadRenderer(canvas, mode){
   const renderer=new THREE.WebGLRenderer({canvas, antialias:true});
@@ -457,29 +533,36 @@ function makeQuadRenderer(canvas, mode){
   const cam=new THREE.Camera();
   const uniforms={
     uScreenRadius:{value:P.screenRadius}, uScreenHeight:{value:P.screenHeight},
-    uScreenArcDeg:{value:P.screenArcDeg}, uEyePos:{value:new THREE.Vector3()},
-    uGameHFovDeg:{value:P.gameHFovDeg}, uProjPos:{value:new THREE.Vector3()},
+    uScreenArcDeg:{value:P.screenArcDeg}, uScreenBase:{value:P.screenBase},
+    uEyePos:{value:new THREE.Vector3()},
+    uGameHFovDeg:{value:P.gameHFovDeg}, uSourceAspect:{value:P.sourceAspect},
+    uProjPos:{value:new THREE.Vector3()},
     uProjRotDeg:{value:new THREE.Vector3()}, uProjHFovDeg:{value:P.projHFovDeg},
     uProjAspect:{value:P.projAspect}, uGridLines:{value:P.gridLines},
+    uPaneAspect:{value:1.0},
     uShowGrid:{value:P.showGrid}, uMode:{value:mode},
-    uGameTex:{value:null}, uUseTex:{value:0.0},
+    uGameTex:{value:null}, uUseTex:{value:0.0}, uTexAspect:{value:1.777},
   };
   const mat=new THREE.RawShaderMaterial({vertexShader:VERT, fragmentShader:WARP_GLSL, uniforms,
     glslVersion: THREE.GLSL3});
   const quad=new THREE.Mesh(new THREE.PlaneGeometry(2,2), mat);
   scene.add(quad);
+
   return {renderer, scene, cam, uniforms,
     render(){
       const w=canvas.clientWidth, h=canvas.clientHeight;
       if(canvas.width!==w||canvas.height!==h) renderer.setSize(w,h,false);
+      uniforms.uPaneAspect.value = h>0 ? w/h : 1.0;
       renderer.render(scene,cam);
     },
     sync(){
       uniforms.uScreenRadius.value=P.screenRadius;
       uniforms.uScreenHeight.value=P.screenHeight;
       uniforms.uScreenArcDeg.value=P.screenArcDeg;
+      uniforms.uScreenBase.value=P.screenBase;
       uniforms.uEyePos.value.set(P.eyeX,P.eyeY,P.eyeZ);
       uniforms.uGameHFovDeg.value=P.gameHFovDeg;
+      uniforms.uSourceAspect.value=P.sourceAspect;
       uniforms.uProjPos.value.set(P.projX,P.projY,P.projZ);
       uniforms.uProjRotDeg.value.set(P.projYaw,P.projPitch,P.projRoll);
       uniforms.uProjHFovDeg.value=P.projHFovDeg;
@@ -488,6 +571,7 @@ function makeQuadRenderer(canvas, mode){
       uniforms.uShowGrid.value=P.showGrid;
       uniforms.uGameTex.value=gameTexture;
       uniforms.uUseTex.value=gameTexture?1.0:0.0;
+      uniforms.uTexAspect.value=gameTexAspect;
     }};
 }
 
@@ -511,6 +595,8 @@ function loadGameImage(path){
     tex.needsUpdate=true;
     if(gameTexture) gameTexture.dispose();
     gameTexture=tex;
+    const img=tex.image;
+    if(img && img.width && img.height) gameTexAspect=img.width/img.height;
     updateAll();
   }, undefined, (err)=>{ console.error('Failed to load', path, err); });
 }
@@ -529,7 +615,7 @@ const scene3=new THREE.Scene();
 const cam3=new THREE.PerspectiveCamera(50,1,0.01,100);
 cam3.position.set(3,2.2,4.5);
 const controls=new OrbitControls(cam3, sr.domElement);
-controls.target.set(0,0,0.5);
+controls.target.set(0,1.2,0.5);
 
 scene3.add(new THREE.AmbientLight(0xffffff,0.6));
 const dl=new THREE.DirectionalLight(0xffffff,0.8); dl.position.set(3,5,4); scene3.add(dl);
@@ -549,6 +635,7 @@ function rebuildScreen(){
   const mat=new THREE.MeshStandardMaterial({color:0x8899aa, side:THREE.DoubleSide,
     metalness:0.0, roughness:0.9, transparent:true, opacity:0.5});
   screenMesh=new THREE.Mesh(geo,mat);
+  screenMesh.position.y=P.screenBase + P.screenHeight*0.5;  // base sits screenBase above the floor
   scene3.add(screenMesh);
 }
 rebuildScreen();
@@ -578,7 +665,9 @@ let frustum=null;
 // from yaw/pitch the same way the shader does (Ry*Rp applied to local +Z).
 function projForward(){
   if(P.autoAim>=0.5){
-    return new THREE.Vector3(0,0,P.screenRadius)
+    // Must match applyAutoAim's target: the screen centre, which sits at
+    // screenBase + screenHeight/2 now that the screen is mounted above the floor.
+    return new THREE.Vector3(0, P.screenBase + P.screenHeight*0.5, P.screenRadius)
       .sub(new THREE.Vector3(P.projX,P.projY,P.projZ)).normalize();
   }
   const yaw=THREE.MathUtils.degToRad(P.projYaw);
@@ -650,13 +739,12 @@ function update3D(){
 // Master update + render loop
 // ------------------------------------------------------------------
 let needScreenRebuild=false, needFrustumRebuild=false;
-let last={arc:P.screenArcDeg, r:P.screenRadius, h:P.screenHeight,
+let last={arc:P.screenArcDeg, r:P.screenRadius, h:P.screenHeight, b:P.screenBase,
           pf:P.projHFovDeg, pa:P.projAspect};
 function updateAll(){
   applyAutoAim();  // recompute projector aim from position before syncing views
-  applyAutoFit();  // widen FOV so the beam covers the screen (prevents black views)
-  if(P.screenArcDeg!==last.arc||P.screenRadius!==last.r||P.screenHeight!==last.h){
-    needScreenRebuild=true; last.arc=P.screenArcDeg; last.r=P.screenRadius; last.h=P.screenHeight;
+  if(P.screenArcDeg!==last.arc||P.screenRadius!==last.r||P.screenHeight!==last.h||P.screenBase!==last.b){
+    needScreenRebuild=true; last.arc=P.screenArcDeg; last.r=P.screenRadius; last.h=P.screenHeight; last.b=P.screenBase;
   }
   if(P.projHFovDeg!==last.pf||P.projAspect!==last.pa){
     needFrustumRebuild=true; last.pf=P.projHFovDeg; last.pa=P.projAspect;

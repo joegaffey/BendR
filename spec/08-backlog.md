@@ -5,38 +5,39 @@ Requirement IDs continue the sequence in `02-requirements.md`.
 
 ## Defects
 
-### D-1 — Side panel scrollbar is unstyled
+### D-1 — Side panel scrollbar is unstyled — RESOLVED
 
-The control sidebar scrolls correctly (AC-6) but uses the browser's default scrollbar,
-which is visually inconsistent with the dark panel.
+The control sidebar scrolls correctly (AC-6) but used the browser's default scrollbar,
+which was visually inconsistent with the dark panel.
 
-Fix by styling the scrollbar to match the panel: a thin track in the panel colour with a
-muted thumb, using `scrollbar-width` and `scrollbar-color` for standard support plus
-`::-webkit-scrollbar` for Chromium. Both are needed for cross-browser coverage.
+Fixed by styling the scrollbar to match the panel: a thin track in the panel colour with
+a muted thumb (`#484f58`), using `scrollbar-width`/`scrollbar-color` for standard support
+plus `::-webkit-scrollbar` for Chromium.
 
 Cosmetic only; no effect on function.
 
-### D-2 — Lower 3D views stretch on window resize
+### D-2 — Lower 3D views stretch on window resize — RESOLVED
 
-The Projector Output and Eye View panes distort when the window is resized.
+The Projector Output and Eye View panes distorted when the window was resized.
 
 Cause: the two lower renderers resize their drawing buffer to the canvas client size,
-but the warp shader derives its ray directions from `uProjAspect`, the *projector's*
-aspect ratio, which is independent of the canvas aspect. When the canvas aspect diverges
-from the projector aspect, the rendered image is stretched to fill the pane.
+but the warp shader derived its ray directions from a fixed image aspect independent of
+the canvas aspect. When the canvas aspect diverged, the rendered image stretched to fill
+the pane.
 
-The 3D scene does not suffer this because it updates `cam3.aspect` on resize; the
-fullscreen-quad renderers have no equivalent correction.
+Fixed by decoupling image aspect from pane aspect. A `uPaneAspect` uniform (canvas
+width/height, sampled per frame) drives a `fitNDC` helper that letter/pillarboxes each
+view to its true image aspect — `ProjAspect` for the projector output, `SourceAspect`
+for the eye view — filling the spare area with background. See also the on-demand
+rendering note in `07-roadmap.md` for when a `ResizeObserver` would become preferable.
 
-Fix by decoupling the projector's image aspect from the canvas aspect. Letterbox or
-pillarbox the projector output inside its pane so the emitted image keeps its true
-aspect, filling unused area with the background colour. The same applies to the eye view,
-whose aspect should follow the game's projection rather than the pane.
+### D-3 — Bundled screenshots are triple-screen captures — PARTIALLY RESOLVED
 
-This is a correctness issue, not only cosmetic: a stretched projector output
-misrepresents what the projector would emit.
-
-### D-3 — Bundled screenshots are triple-screen captures
+**Status:** the aspect-conflation half is fixed; the framing/FOV half is still open.
+`SourceAspect` is now a distinct control (with presets and center-crop of the source
+image) separate from `ProjAspect`, so the source is no longer sampled through the
+projector's aspect. What remains is selecting *which region* of a triple-screen capture
+to treat as the game frame, with the matching FOV.
 
 All seven bundled images are triple-monitor captures, not single-display frames:
 
@@ -80,9 +81,10 @@ Implementation is a UV transform on the sampled region — a scale and offset ap
 scale `gameHFovDeg` proportionally by default, while remaining manually overridable, so
 the coupling in point 2 is handled without the user having to reason about it.
 
-Note that `projAspect` is currently reused as the game's aspect ratio in the eye-view and
-source-UV maths. Correct framing needs a distinct source aspect, derived from the selected
-region rather than borrowed from the projector.
+Note: the distinct source aspect this correction needs is now in place (`SourceAspect`,
+independent of `ProjAspect`). The remaining work is the region-selection UV transform and
+its coupled FOV; the selected region should also set `SourceAspect` from that region's
+proportions rather than being left to the user.
 
 
 ## Additions
@@ -131,15 +133,13 @@ render-to-texture foundation.
 
 ## Suggested order
 
-1. **D-3** — the bundled images are the primary calibration reference, and while they are
-   misframed the grid straightness check is the only trustworthy signal. Also the item
-   most likely to mislead, since a cropped-but-wrong-FOV result looks plausible.
-2. **D-2** — correctness issue, and its aspect handling overlaps D-3's source aspect work.
-3. **D-1** — small, self-contained cosmetic fix.
-4. **FR-31 with the two-pass eye view** — shared render-to-texture foundation.
-5. **FR-30** — largest, and benefits from FR-31 already establishing projector-driven
-   rendering in the 3D scene.
+D-1 and D-2 are done. The aspect-split half of D-3 is done alongside D-2 (they shared the
+same `projAspect` conflation). Remaining:
 
-D-2 and D-3 are worth doing together: both concern the relationship between source aspect,
-projector aspect, and pane aspect, which is currently conflated in a single `projAspect`
-uniform.
+1. **D-3 (framing/FOV)** — the bundled images are the primary calibration reference;
+   until the centre-third framing and its coupled FOV land, they show three copies of the
+   game at the wrong horizontal FOV. The item most likely to mislead, since a
+   cropped-but-wrong-FOV result looks plausible. The `SourceAspect` foundation is in place.
+2. **FR-31 with the two-pass eye view** — shared render-to-texture foundation.
+3. **FR-30** — largest, and benefits from FR-31 already establishing projector-driven
+   rendering in the 3D scene.
