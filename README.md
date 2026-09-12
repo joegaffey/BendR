@@ -1,11 +1,17 @@
 # BendR — Bend Reality
 
 Free, geometry-driven **mesh warping + edge blending** for curved and semi-spherical
-projection screens, aimed at flight/racing/sim rigs. Works with **any game or sim**.
+projection screens, aimed at flight/racing/sim rigs. Intended to work with any game or
+sim — via ReShade, or the planned capture app.
 
 ### ▶ [Try the live simulator](https://joegaffey.github.io/BendR/)
 
 Tune projector pose, screen geometry, and eye-point in the browser — no install required.
+
+> **Status: work in progress.** The web simulator works and is usable for exploring and
+> validating the warp. The ReShade shader is written but has not been run on hardware, and
+> the standalone multi-projector app is not started. Parameters, file formats, and
+> interfaces may still change.
 
 BendR exists because commercial screen-warping software (Vioso, Scalable Display,
 Fly Elise-ng, etc.) is expensive — while the underlying math is a well-understood
@@ -87,12 +93,24 @@ BendR/
 See [`spec/`](spec/README.md). For the core idea, read `spec/01-overview.md` then
 `spec/03-geometry.md`, which is the normative reference for the warp derivation.
 
+## Status
+
+| Component | State |
+|---|---|
+| Web simulator (`web/`) | Working — off-axis cylinder warp, multi-projector composite, two-pass eye view, calibration UI |
+| ReShade shader (`reshade/`) | Written, not yet compiled or run on hardware; behind the simulator |
+| Runtime output (`spec/09-runtime.md`) | Specified only |
+| Standalone app (`app/`) | Not started |
+
 ## Roadmap
 
-- [ ] Phase 1: off-axis cylinder `BendR.fx` + calibration grid overlay
-- [ ] Phase 1.5: launch fullscreen outputs on the rig for validation, and export the
-      calibration as JSON (`spec/09-runtime.md`)
-- [ ] Phase 1: semi-spherical mode
+- [x] Off-axis cylinder warp + calibration grid (web simulator)
+- [x] Multi-projector composite + edge blending (web simulator)
+- [ ] ReShade `BendR.fx` synced to the current math and verified on hardware
+- [ ] Phase 1.5: launch fullscreen outputs on the rig and export calibration as JSON
+      (`spec/09-runtime.md`)
+- [ ] Semi-spherical mode
+- [ ] Control-point mesh offset layer and JSON persistence
 - [ ] Phase 2: capture -> passthrough -> fullscreen output pipeline
 - [ ] Phase 2: port shader math into the app
-- [ ] Phase 2: multi-projector edge blending (alpha ramp + black-level + gamma)
+- [ ] Phase 2: multi-projector edge blending in the app
