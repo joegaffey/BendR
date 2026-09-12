@@ -1,6 +1,6 @@
 # BendR — Runtime Output Specification
 
-**Path:** `web/index.html` (output mode) — **Status:** not started
+**Path:** `web/index.html` (output mode) — **Status:** implemented in the web simulator; not yet verified on hardware
 
 Phase 1.5: use the calibrated simulator to drive the real projectors, then carry the
 calibration to ReShade or the standalone app. It is a **validation and on-rig tuning**
@@ -109,8 +109,8 @@ ReShade preset generator derives from it.
 - `screen`, `eye`, `pose`, and `intrinsics` correspond to the parameters in
   `03-geometry.md`; `blend` and `photometric` to its "Multi-projector and edge blending"
   section.
-- `source.image` is a path or null (the synthetic test grid); `showGrid` and `gridLines`
-  are the calibration overlay.
+- `source.image` is a source-image name (a `GAME_IMAGES` key, e.g. `"iRacing"`) or null
+  (the synthetic test grid); `showGrid` and `gridLines` are the calibration overlay.
 
 ## Fullscreen
 

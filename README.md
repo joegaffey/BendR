@@ -99,7 +99,7 @@ See [`spec/`](spec/README.md). For the core idea, read `spec/01-overview.md` the
 |---|---|
 | Web simulator (`web/`) | Working — off-axis cylinder warp, multi-projector composite, two-pass eye view, calibration UI |
 | ReShade shader (`reshade/`) | Written, not yet compiled or run on hardware; behind the simulator |
-| Runtime output (`spec/09-runtime.md`) | Specified only |
+| Runtime output (`spec/09-runtime.md`) | Implemented in the web simulator; not yet verified on hardware |
 | Standalone app (`app/`) | Not started |
 
 ## Roadmap

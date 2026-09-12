@@ -56,6 +56,10 @@ Repository: local git only, branch `main`, no remote configured.
   stale image landing wrongly, so the Eye View now detects geometric mis-calibration. A
   panel-space two-pass alone cancels (pass 2 is the inverse of pass 1); the pose split is
   what makes it work. The `kEyeRefAspect` viewer stand-in remains — see Deferred.
+- **Runtime output (Phase 1.5)**: `#output=<j>` renders one projector's warp full-window;
+  the controller launches one window per enabled projector and live-syncs by
+  `postMessage`; calibration JSON export (copy/download). See `09-runtime.md`. On-rig
+  verification pending (next step 1).
 
 ### Removed
 
@@ -75,14 +79,12 @@ capability Phase 2 exists to deliver.
 Multi-projector and edge blending are now implemented in the web simulator (see
 "Completed"); porting the proven math to the standalone app is part of next step 5.
 
-### 1. Runtime output (web)
+### 1. Verify the runtime output on the rig
 
-Implements FR-29 and FR-33 as specified in `09-runtime.md`: a run mode in
-`web/index.html` that launches one fullscreen output window per enabled projector
-(manually placed), live-synced from the simulator by `postMessage`, with the calibration
-grid as the static source. It lets the warp be checked and tuned on the physical screen
-and exports the calibration as JSON for the gaming rig. It is the last web step before
-the ReShade handoff and the standalone app.
+Implemented in `web/index.html` per `09-runtime.md`: a run mode that launches one
+fullscreen output window per enabled projector (manually placed), live-synced from the
+simulator by `postMessage`, with the calibration grid as the static source, plus JSON
+export. What remains is on-hardware verification (AC-10–AC-12) and any fixes it surfaces.
 
 ### 2. Control-point mesh layer
 

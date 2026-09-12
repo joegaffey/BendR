@@ -86,6 +86,18 @@
          padding:2px 6px; border-radius:4px; z-index:2; }
   canvas { display:block; width:100%; height:100%; }
   .hint { font-size:11px; color:#8b949e; margin-top:10px; line-height:1.4; }
+  /* Runtime output mode (spec/09-runtime.md): one projector, full window. */
+  body.run #controls { display:none; }
+  body.run #app { grid-template-columns:1fr; }
+  body.run #views { grid-template-rows:1fr; }
+  body.run #scene { display:none; }
+  body.run #lower { grid-template-columns:1fr; }
+  body.run #eyeWrap { display:none; }
+  body.run .tag { display:none; }
+  #fsOverlay { position:fixed; inset:0; display:flex; align-items:center;
+               justify-content:center; background:rgba(0,0,0,.6); z-index:20; }
+  #fsOverlay.hidden { display:none; }
+  #fsOverlay button { font-size:15px; padding:12px 22px; }
 </style>
 </head>
 <body>
@@ -106,9 +118,9 @@
   <div id="views">
     <div id="scene"><div class="tag">Physical Scene (orbit to inspect)</div></div>
     <div id="lower">
-      <div class="canvaswrap"><div class="tag">Projector Output (active)</div>
+      <div class="canvaswrap" id="projWrap"><div class="tag">Projector Output (active)</div>
         <canvas id="projCanvas"></canvas></div>
-      <div class="canvaswrap"><div class="tag">Eye View (composite)</div>
+      <div class="canvaswrap" id="eyeWrap"><div class="tag">Eye View (composite)</div>
         <canvas id="eyeCanvas"></canvas></div>
     </div>
   </div>
@@ -172,6 +184,7 @@ const P = {
   eyeX: 0.0, eyeY: 1.2, eyeZ: 0.0, gameHFovDeg: 90.0,
   sourceAspect: 1.777,
   gridLines: 12.0, showGrid: 1.0,
+  sourceImage: null,  // GAME_IMAGES key, or null for the synthetic test grid
   projectors: [makeProjector(0)],
   activeProj: 0,
   warpFollows: 1.0,   // when on, calibration pose tracks the actual projector pose
@@ -229,6 +242,110 @@ function eyeDirectEnabled(){
   return true;
 }
 
+// ------------------------------------------------------------------
+// Runtime output configuration (spec/09-runtime.md). The config is the handoff
+// contract; it is serialised for export and postMessage sync, and applied on boot
+// in an output window.
+// ------------------------------------------------------------------
+function num(v,d){ return (typeof v==='number' && isFinite(v)) ? v : d; }
+
+// Rebuild a projector from a config entry. `pose` is the calibration (warp) pose, so
+// both the actual and calibration poses are set to it and auto-aim is disabled — the
+// output renders exactly the supplied warp.
+function projectorFromConfig(p,i){
+  const pr=makeProjector(i);
+  const pose=p.pose||{}, intr=p.intrinsics||{}, bl=p.blend||{}, ph=p.photometric||{};
+  pr.name = p.name || pr.name;
+  pr.enabled = p.enabled===false ? 0 : 1;
+  pr.visible = 1;
+  pr.autoAim = 0;
+  pr.projX=num(pose.x,pr.projX); pr.projY=num(pose.y,pr.projY); pr.projZ=num(pose.z,pr.projZ);
+  pr.projYaw=num(pose.yaw,pr.projYaw); pr.projPitch=num(pose.pitch,pr.projPitch);
+  pr.projRoll=num(pose.roll,pr.projRoll);
+  pr.projHFovDeg=num(intr.hFovDeg,pr.projHFovDeg);
+  pr.projAspect=num(intr.aspect,pr.projAspect);
+  pr.blendLeft=num(bl.left,0); pr.blendRight=num(bl.right,0);
+  pr.blendTop=num(bl.top,0); pr.blendBottom=num(bl.bottom,0);
+  pr.blackLevel=num(ph.blackLevel,0); pr.gamma=num(ph.gamma,2.2); pr.gain=num(ph.gain,1);
+  pr.cal = { x:pr.projX, y:pr.projY, z:pr.projZ, yaw:pr.projYaw, pitch:pr.projPitch,
+             roll:pr.projRoll, hFov:pr.projHFovDeg, aspect:pr.projAspect };
+  return pr;
+}
+
+// Apply a config to P (no UI refresh; the panel reads P at build time).
+function applyConfig(cfg){
+  if(!cfg) return;
+  const s=cfg.screen||{}, e=cfg.eye||{}, src=cfg.source||{};
+  if(s.radius!=null)  P.screenRadius=s.radius;
+  if(s.height!=null)  P.screenHeight=s.height;
+  if(s.arcDeg!=null)  P.screenArcDeg=s.arcDeg;
+  if(s.base!=null)    P.screenBase=s.base;
+  if(e.x!=null)       P.eyeX=e.x;
+  if(e.y!=null)       P.eyeY=e.y;
+  if(e.z!=null)       P.eyeZ=e.z;
+  if(e.gameHFovDeg!=null) P.gameHFovDeg=e.gameHFovDeg;
+  if(e.sourceAspect!=null) P.sourceAspect=e.sourceAspect;
+  if(src.showGrid!=null)  P.showGrid=src.showGrid?1:0;
+  if(src.gridLines!=null) P.gridLines=src.gridLines;
+  if('image' in src) P.sourceImage=src.image;
+  if(Array.isArray(cfg.projectors) && cfg.projectors.length){
+    P.projectors = cfg.projectors.map(projectorFromConfig);
+    P.activeProj = Math.min(P.activeProj, P.projectors.length-1);
+  }
+}
+
+// The v1 config schema (spec/09-runtime.md). `pose` is the calibration pose.
+function serializeConfig(){
+  return {
+    version: 1,
+    screen: { radius:P.screenRadius, height:P.screenHeight,
+              arcDeg:P.screenArcDeg, base:P.screenBase },
+    eye: { x:P.eyeX, y:P.eyeY, z:P.eyeZ,
+           gameHFovDeg:P.gameHFovDeg, sourceAspect:P.sourceAspect },
+    source: { image:P.sourceImage||null, showGrid:P.showGrid>=0.5, gridLines:P.gridLines },
+    projectors: P.projectors.map(pr=>({
+      name: pr.name,
+      enabled: pr.enabled>=0.5,
+      pose: { x:pr.cal.x, y:pr.cal.y, z:pr.cal.z,
+              yaw:pr.cal.yaw, pitch:pr.cal.pitch, roll:pr.cal.roll },
+      intrinsics: { hFovDeg: pr.cal.hFov, aspect: pr.cal.aspect },
+      blend: { left:pr.blendLeft, right:pr.blendRight, top:pr.blendTop, bottom:pr.blendBottom },
+      photometric: { blackLevel:pr.blackLevel, gamma:pr.gamma, gain:pr.gain },
+    })),
+  };
+}
+
+// base64url so the value survives URLSearchParams (`+` would decode as a space).
+function b64encode(str){
+  return btoa(unescape(encodeURIComponent(str)))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function b64decode(b64){
+  let s=b64.replace(/-/g,'+').replace(/_/g,'/');
+  while(s.length%4) s+='=';
+  return decodeURIComponent(escape(atob(s)));
+}
+
+// Parse `#output=<j>&cfg=<base64>` from the URL hash.
+function parseRunHash(){
+  const h=location.hash.replace(/^#/,'');
+  if(!h) return { index:null, config:null };
+  const params=new URLSearchParams(h);
+  const o=params.get('output');
+  let config=null;
+  const c=params.get('cfg');
+  if(c){ try{ config=JSON.parse(b64decode(c)); }catch(err){ console.error('BendR: bad cfg', err); } }
+  return { index:o!==null ? parseInt(o,10) : null, config };
+}
+
+const RUN = parseRunHash();
+const isOutput = RUN.index!==null;
+if(RUN.config) applyConfig(RUN.config);
+if(isOutput) P.activeProj=Math.min(RUN.index, P.projectors.length-1);
+
+// Controller-side handles to the opened output windows (postMessage sync).
+const outputWindows={};
+
 // Sim screenshots (copied from muscled). Label -> path. "Test Grid" = synthetic.
 const GAME_IMAGES = {
   'Test Grid (synthetic)': null,
@@ -242,18 +359,7 @@ const GAME_IMAGES = {
 };
 
 const SLIDER_DEFS = [
-  ['Screen', [
-    ['screenRadius','Radius (m)',0.3,5,0.01],
-    ['screenHeight','Height (m)',0.3,4,0.01],
-    ['screenBase','Base Height (m)',0,2,0.01],
-    ['screenArcDeg','Arc (deg)',30,270,1],
-  ]],
-  ['Eye-point', [
-    ['eyeX','Eye X (m)',-3,3,0.01],
-    ['eyeY','Eye Height (m)',0,3,0.01],
-    ['eyeZ','Eye Z (m)',-3,3,0.01],
-    ['gameHFovDeg','Game FOV (deg)',30,160,0.5],
-  ]],
+  // Projector controls first, directly under the Projectors list.
   ['Projector', [
     ['projX','Pos X (m)',-4,4,0.01],
     ['projY','Height (m)',0,4,0.01],
@@ -273,6 +379,18 @@ const SLIDER_DEFS = [
     ['gamma','Gamma',1,3,0.01],
     ['gain','Gain',0.5,1.0,0.01],
   ]],
+  ['Screen', [
+    ['screenRadius','Radius (m)',0.3,5,0.01],
+    ['screenHeight','Height (m)',0.3,4,0.01],
+    ['screenBase','Base Height (m)',0,2,0.01],
+    ['screenArcDeg','Arc (deg)',30,270,1],
+  ]],
+  ['Eye-point', [
+    ['eyeX','Eye X (m)',-3,3,0.01],
+    ['eyeY','Eye Height (m)',0,3,0.01],
+    ['eyeZ','Eye Z (m)',-3,3,0.01],
+    ['gameHFovDeg','Game FOV (deg)',30,160,0.5],
+  ]],
   ['Calibration', [
     ['gridLines','Grid Lines',4,32,1],
   ]],
@@ -285,7 +403,7 @@ const slidersEl = document.getElementById('sliders');
 const valEls = {};
 const sliderEls = {};
 const aspectReflectors = {};
-let projPillsEl, autoAimEl;
+let projPillsEl, autoAimEl, gameSelectEl;
 
 // Each control group is a collapsible section: a clickable .cat header + a body.
 // Controls are appended to sectionBody, which addSection points at the group being
@@ -352,7 +470,9 @@ function appendAspectDropdown(key, labelText){
 
   const btnRow=document.createElement('div'); btnRow.className='row';
   const addBtn=document.createElement('button'); addBtn.textContent='Add projector';
-  addBtn.style.flex='1';
+  const launchBtn=document.createElement('button'); launchBtn.textContent='Launch outputs';
+  launchBtn.title='Open one fullscreen output window per enabled projector';
+  addBtn.style.flex='1'; launchBtn.style.flex='1';
   addBtn.addEventListener('click',()=>{
     if(P.projectors.length>=MAX_PROJECTORS) return;
     P.projectors.push(makeProjector(P.projectors.length));
@@ -363,7 +483,8 @@ function appendAspectDropdown(key, labelText){
     refreshProjectorControls();
     updateAll();
   });
-  btnRow.appendChild(addBtn); sectionBody.appendChild(btnRow);
+  launchBtn.addEventListener('click', launchOutputs);
+  btnRow.appendChild(addBtn); btnRow.appendChild(launchBtn); sectionBody.appendChild(btnRow);
 }
 
 // Delete a projector by index, keeping the active index valid.
@@ -504,7 +625,12 @@ function appendSlider(key,label,min,max,step){
     const opt=document.createElement('option'); opt.value=name; opt.textContent=name;
     sel.appendChild(opt);
   }
-  sel.addEventListener('change',()=>{ loadGameImage(GAME_IMAGES[sel.value]); });
+  gameSelectEl=sel;
+  if(P.sourceImage && GAME_IMAGES[P.sourceImage]!==undefined) sel.value=P.sourceImage;
+  sel.addEventListener('change',()=>{
+    P.sourceImage=sel.value;
+    loadGameImage(GAME_IMAGES[sel.value]);
+  });
   row.appendChild(l); row.appendChild(sel);
   sectionBody.appendChild(row);
   // Signal aspect belongs with the source image, not the eye-point.
@@ -530,6 +656,28 @@ function appendSlider(key,label,min,max,step){
     updateAll();
   });
   brow.appendChild(b); sectionBody.appendChild(brow);
+}
+
+// Export the calibration (spec/09-runtime.md): copy to clipboard or download a file
+// to carry to the gaming rig.
+{
+  addSection('Calibration JSON');
+  const row=document.createElement('div'); row.className='row';
+  const copy=document.createElement('button'); copy.textContent='Copy JSON';
+  const dl=document.createElement('button'); dl.textContent='Download';
+  copy.style.flex='1'; dl.style.flex='1';
+  copy.addEventListener('click',()=>{
+    navigator.clipboard.writeText(JSON.stringify(serializeConfig(),null,2)).then(()=>{
+      copy.textContent='Copied'; setTimeout(()=>copy.textContent='Copy JSON',1200);
+    }).catch(err=>console.error('BendR: clipboard failed', err));
+  });
+  dl.addEventListener('click',()=>{
+    const blob=new Blob([JSON.stringify(serializeConfig(),null,2)],{type:'application/json'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download='bendr-calibration.json';
+    a.click(); URL.revokeObjectURL(a.href);
+  });
+  row.appendChild(copy); row.appendChild(dl); sectionBody.appendChild(row);
 }
 
 // Enable/disable the manual aim sliders (yaw/pitch/roll) when auto-aim toggles.
@@ -1298,10 +1446,13 @@ function rebuildProjectors3D(){
     orientZ(cone, projForwardFor(pr));   // cone local +Z -> forward direction
     setOnTop(cone, active, 999);         // selected projector draws over the rest
     projGroup.add(cone);
-    if(pr.enabled<0.5) return;           // disabled projector: no frustum
+    // The frustum is always drawn (scene visibility is the "Scene" checkbox); a
+    // projector that is out of the composite is dimmed, not hidden.
     const g=frustumGeometry(new THREE.Vector3(pr.projX,pr.projY,pr.projZ),
                             projForwardFor(pr), pr.projHFovDeg, pr.projAspect);
-    const line=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color}));
+    const lineMat=new THREE.LineBasicMaterial({color});
+    if(pr.enabled<0.5){ lineMat.transparent=true; lineMat.opacity=0.3; }
+    const line=new THREE.LineSegments(g,lineMat);
     setOnTop(line, active, 999);
     projGroup.add(line);
   });
@@ -1348,10 +1499,98 @@ function updateAll(){
   }
   computeBlackLift();
   projView.sync(); eyeView.sync(); update3D();
+  if(!isOutput) postConfigToOutputs();
 }
 updateAll();
 
+// ------------------------------------------------------------------
+// Runtime output: launch windows and postMessage sync (spec/09-runtime.md)
+// ------------------------------------------------------------------
+
+// Open (or focus) one output window per enabled projector, then push the config.
+function launchOutputs(){
+  const cfg=b64encode(JSON.stringify(serializeConfig()));
+  P.projectors.forEach((pr,i)=>{
+    if(pr.enabled<0.5) return;
+    let w=outputWindows[i];
+    if(!w || w.closed){
+      w=window.open(location.pathname+'#output='+i+'&cfg='+cfg, 'bendr-out-'+i);
+      if(!w){ console.warn('BendR: popup blocked for projector '+(i+1)); return; }
+      outputWindows[i]=w;
+    } else {
+      w.focus();
+    }
+    w.postMessage({type:'config', config:serializeConfig()}, location.origin);
+  });
+}
+
+// Push the current config to every open output window.
+function postConfigToOutputs(){
+  const msg={type:'config', config:serializeConfig()};
+  for(const k in outputWindows){
+    const w=outputWindows[k];
+    if(w && !w.closed) w.postMessage(msg, location.origin);
+  }
+}
+
+// Rebuild the UI from P after a config is applied at runtime.
+function afterConfigApplied(){
+  refreshProjectorList();
+  syncSlidersToParams();
+  refreshProjectorControls();
+  const name=(P.sourceImage && GAME_IMAGES[P.sourceImage]!==undefined)
+    ? P.sourceImage : 'Test Grid (synthetic)';
+  if(gameSelectEl && gameSelectEl.value!==name){
+    gameSelectEl.value=name;
+    loadGameImage(GAME_IMAGES[name]);
+  }
+  updateAll();
+}
+
+window.addEventListener('message',(e)=>{
+  if(e.origin!==location.origin) return;
+  const d=e.data||{};
+  if(isOutput && d.type==='config'){
+    applyConfig(d.config);
+    afterConfigApplied();
+  } else if(!isOutput && d.type==='ready'){
+    // A newly opened output asks for the current state.
+    if(e.source && e.source.postMessage)
+      e.source.postMessage({type:'config', config:serializeConfig()}, location.origin);
+  }
+});
+
+// Output mode: fullscreen prompt, cursor auto-hide, and the ready handshake.
+if(isOutput){
+  document.body.classList.add('run');
+  const ov=document.createElement('div'); ov.id='fsOverlay';
+  const btn=document.createElement('button'); btn.textContent='Go fullscreen';
+  btn.addEventListener('click',()=>{
+    if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+  });
+  // Clicking the backdrop dismisses the prompt (e.g. to just maximize instead).
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.classList.add('hidden'); });
+  ov.appendChild(btn); document.body.appendChild(ov);
+  document.addEventListener('fullscreenchange',()=>{
+    ov.classList.toggle('hidden', !!document.fullscreenElement);
+  });
+  let cursorTimer;
+  document.addEventListener('mousemove',()=>{
+    document.body.style.cursor='';
+    clearTimeout(cursorTimer);
+    cursorTimer=setTimeout(()=>{ document.body.style.cursor='none'; },2500);
+  });
+  if(window.opener){
+    try{ window.opener.postMessage({type:'ready'}, location.origin); }catch(err){}
+  }
+}
+
+// Load the configured source image (output windows and reloads); done here so
+// loadGameImage and its texture loader are defined.
+if(P.sourceImage && GAME_IMAGES[P.sourceImage]!==undefined) loadGameImage(GAME_IMAGES[P.sourceImage]);
+
 function resize3(){
+  if(isOutput) return;   // the 3D scene is hidden in output mode
   const w=sceneEl.clientWidth, h=sceneEl.clientHeight;
   sr.setSize(w,h,false); cam3.aspect=w/h; cam3.updateProjectionMatrix();
 }
@@ -1359,10 +1598,9 @@ window.addEventListener('resize',resize3); resize3();
 
 function loop(){
   if(needScreenRebuild){ rebuildScreen(); needScreenRebuild=false; }
-  controls.update();
-  sr.render(scene3,cam3);
+  if(!isOutput){ controls.update(); sr.render(scene3,cam3); }
   projView.render();
-  eyeView.render();
+  if(!isOutput) eyeView.render();
   requestAnimationFrame(loop);
 }
 loop();
