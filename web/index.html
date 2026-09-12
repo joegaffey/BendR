@@ -798,6 +798,17 @@ out vec4 fragColor;
     return abs(ang)<=halfArc && S.y>=uScreenBase && S.y<=uScreenBase+uScreenHeight;
   }
 
+  // A projector is "rear" (its light passes through the screen, so the emitted image
+  // is mirrored) only when it is both outside the cylinder radius AND angularly in
+  // front of the screen arc. Outside the radius but behind or beside the arc, the beam
+  // crosses the non-screen part of the cylinder and lands on the concave side the
+  // viewer sees directly, so no mirror applies. Testing radius alone makes the image
+  // flip as the projector slides sideways behind the screen.
+  bool isRearProjector(vec3 p){
+    float halfArc=d2r(uScreenArcDeg)*0.5;
+    return length(p.xz)>uScreenRadius && abs(atan(p.x, p.z))<=halfArc;
+  }
+
   // Nearest valid intersection of ray (o,d) with the vertical cylinder, choosing
   // the closest positive hit that lies within the screen arc + height. This makes
   // the warp correct for ANY projector placement: a front projector inside the
@@ -876,7 +887,7 @@ out vec4 fragColor;
     vec2 ndc=vec2(local.x/local.z/tanH, local.y/local.z/tanV);
     // Apply the same rear-projection mirror the emit pass uses, so the returned
     // coordinate indexes the emitted panel texture rather than the raw projection.
-    if(length(uProjPos[j].xz) > uScreenRadius) ndc.x = -ndc.x;
+    if(isRearProjector(uProjPos[j])) ndc.x = -ndc.x;
     ndcOut=ndc;
     return abs(ndc.x)<=1.0 && abs(ndc.y)<=1.0; // inside the panel rectangle
   }
@@ -949,12 +960,10 @@ out vec4 fragColor;
       // filling the spare pane area with background (D-2).
       ndc=fitNDC(ndc, uCalAspect[a]);
       if(outsideImage(ndc)){ fragColor=kBg; return; }
-      // Rear projection: projector sits OUTSIDE the cylinder (its distance from the
-      // Y axis exceeds the screen radius). Light passes through the screen to the
-      // viewer, so the emitted image must be mirrored left-right. Flip ndc.x.
-      float projAxisDist=length(uCalPos[a].xz);
-      bool rear = projAxisDist > uScreenRadius;
-      if(rear) ndc.x = -ndc.x;
+      // Rear projection: the projector is outside the cylinder and in front of the
+      // screen arc, so its light passes through the screen to the viewer and the
+      // emitted image must be mirrored left-right.
+      if(isRearProjector(uCalPos[a])) ndc.x = -ndc.x;
       float tanH=tan(d2r(uCalHFovDeg[a])*0.5);
       float tanV=tanH/uCalAspect[a];
       vec3 rayLocal=normalize(vec3(ndc.x*tanH, ndc.y*tanV, 1.0));
@@ -975,9 +984,7 @@ out vec4 fragColor;
       // shows as a displaced/distorted image.
       int a=uEmitProj;
       vec2 ndc=vUv*2.0-1.0; ndc.y=-ndc.y;   // full panel, no pane fit
-      float projAxisDist=length(uCalPos[a].xz);
-      bool rear = projAxisDist > uScreenRadius;
-      if(rear) ndc.x = -ndc.x;
+      if(isRearProjector(uCalPos[a])) ndc.x = -ndc.x;
       float tanH=tan(d2r(uCalHFovDeg[a])*0.5);
       float tanV=tanH/uCalAspect[a];
       vec3 rayLocal=normalize(vec3(ndc.x*tanH, ndc.y*tanV, 1.0));
@@ -1077,6 +1084,12 @@ function rotYPRJS(yaw,pitch,roll){
   return Ry.multiply(Rp).multiply(Rr);
 }
 // Panel NDC of screen point S for projector pr, or null if not lit.
+// Mirror of WARP_GLSL isRearProjector: rear only when outside the radius AND in front
+// of the screen arc. Must match the shader so blend/black-lift use the same panel UVs.
+function isRearProjectorJS(x,z){
+  const halfArc=THREE.MathUtils.degToRad(P.screenArcDeg)*0.5;
+  return Math.hypot(x,z)>P.screenRadius && Math.abs(Math.atan2(x,z))<=halfArc;
+}
 function panelNDC(pr,S){
   if(pr.enabled<0.5) return null;
   const R=rotYPRJS(THREE.MathUtils.degToRad(pr.projYaw),
@@ -1088,6 +1101,7 @@ function panelNDC(pr,S){
   const tanH=Math.tan(THREE.MathUtils.degToRad(pr.projHFovDeg)*0.5);
   const tanV=tanH/pr.projAspect;
   const ndc=new THREE.Vector2(local.x/local.z/tanH, local.y/local.z/tanV);
+  if(isRearProjectorJS(pr.projX,pr.projZ)) ndc.x=-ndc.x;
   if(Math.abs(ndc.x)>1||Math.abs(ndc.y)>1) return null;
   return ndc;
 }

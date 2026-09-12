@@ -102,12 +102,25 @@ A pinhole projector looking down its local +Z.
 
 ### Step 2 — Rear-projection mirror
 
-If the projector lies outside the cylinder, `length(projPos.xz) > screenRadius`, its
-light passes through the screen and reaches the viewer from the far side, so the
-emitted image is mirrored left-to-right. Negate `ndc.x` before building the ray.
+A projector is **rear** when both hold:
 
-This is derived from position, never a user-set mode (FR-8). A discontinuity at exactly
-`length(projPos.xz) == screenRadius` is expected: it is the physical transition.
+1. It lies outside the cylinder: `length(projPos.xz) > screenRadius`.
+2. It lies angularly in front of the screen arc:
+   `abs(atan2(projPos.x, projPos.z)) <= screenArcDeg/2`.
+
+Then its light passes through the screen and reaches the viewer from the far side, so the
+emitted image is mirrored left-to-right: negate `ndc.x` before building the ray.
+
+The angular condition is required. A projector outside the radius but behind or beside
+the arc (the common case of an overhead projector mounted behind the eye) has its beam
+cross the non-screen part of the cylinder and land on the concave side the viewer sees
+directly, so it is front projection and must **not** be mirrored. Testing the radius
+alone makes the image flip as the projector slides sideways behind the screen.
+
+This is derived from position, never a user-set mode (FR-8). A discontinuity is expected
+only at the physical transitions: crossing the screen surface
+(`length(projPos.xz) == screenRadius` while in front of the arc) or crossing the arc edge
+(`abs(atan2(projPos.x, projPos.z)) == screenArcDeg/2`).
 
 ### Step 3 — Projector ray to world space
 
@@ -120,19 +133,24 @@ rayOrigin = projPos
 
 ```
 Ryaw   = [[ cy, 0, sy], [  0, 1,   0], [-sy, 0, cy]]
-Rpitch = [[  1, 0,  0], [  0, cp, -sp], [  0, sp, cp]]
-Rroll  = [[ cr, -sr, 0], [ sr, cr,  0], [  0,  0,  1]]
+Rpitch = [[  1, 0,  0], [  0, cp, sp], [  0, -sp, cp]]
+Rroll  = [[ cr, sr, 0], [-sr, cr,  0], [  0,  0,  1]]
 ```
 
-Note `Rpitch · (0,0,1) = (0, −sp, cp)`: positive pitch tilts the forward vector
-downward. Visual markers must match this or they will disagree with the warp.
+Note `Rpitch · (0,0,1) = (0, sp, cp)`: positive pitch tilts the forward vector
+upward. This is the sign auto-aim relies on: `projPitch = atan2(d.y, …)` is negative
+when the target is below the projector (the overhead default), which tilts the beam
+down toward screen centre. Visual markers must match this or they will disagree with
+the warp.
 
 **Column-major trap.** The matrices above are written row-major. GLSL's `mat3(...)`
 takes its arguments **column-major**, so a direct transcription of the rows into a
 `mat3` constructor silently produces the transpose. A transposed `Ryaw` negates the
 horizontal aim, so auto-aim points the wrong way in X and the screen drifts out of the
-panel as the projector moves sideways. HLSL's `float3x3(...)` is row-major, so the same
-rows are correct there. Transpose (or reorder) the arguments when porting to GLSL.
+panel as the projector moves sideways; a transposed `Rpitch` flips the beam vertically,
+so an auto-aimed projector tilts away from screen centre. HLSL's `float3x3(...)` is
+row-major, so the same rows are correct there. Transpose (or reorder) the arguments
+when porting to GLSL.
 
 ### Step 4 — Intersect the cylinder, choosing the illuminated face
 

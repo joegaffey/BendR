@@ -117,10 +117,14 @@ Bounds test used both to select the root and to clip:
 
 Pixels with no valid in-bounds hit are drawn black.
 
-**Rear-projection mirror:** when the projector is outside the cylinder
-(`length(projPos.xz) > radius`), the emitted image is seen through the screen from
-the far side, so it is mirrored left-right. The shader flips the output pixel's
-`ndc.x` before casting the ray in that case.
+**Rear-projection mirror:** the projector is rear only when it is outside the cylinder
+(`length(projPos.xz) > radius`) **and** in front of the screen arc
+(`abs(atan2(projPos.x, projPos.z)) <= screenArcDeg/2`). Then the emitted image is seen
+through the screen from the far side, so it is mirrored left-right: the shader flips the
+output pixel's `ndc.x` before casting the ray. Outside the radius but behind the arc, the
+beam crosses the non-screen part of the cylinder and lands on the side the viewer sees
+directly, so no mirror applies — otherwise the image flips as the projector slides
+sideways behind the screen.
 
 ### Step 4 — Screen point to eye ray
 

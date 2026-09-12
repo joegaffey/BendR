@@ -20,7 +20,7 @@ Requirement IDs are stable. Status values: **Done**, **Partial**, **Planned**.
 | FR-5 | Accept projector intrinsics: horizontal FOV and aspect ratio. | Done |
 | FR-6 | Optionally auto-aim the projector at screen centre, derived from its position. | Done |
 | FR-7 | Optionally auto-fit projector FOV so the beam covers the whole screen. | Done |
-| FR-8 | Support rear projection (projector outside the screen radius) without a user-set mode. | Done |
+| FR-8 | Support rear projection (projector outside the screen radius and in front of the arc) without a user-set mode. | Done |
 | FR-9 | Support multiple projectors. | Partial |
 
 ### Viewer

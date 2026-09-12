@@ -123,10 +123,10 @@ float3x3 rotationYPR(float3 ypr)
                             0,  1,  0,
                            -sy, 0,  cy);
     float3x3 Rp = float3x3( 1,  0,   0,
-                            0,  cp, -sp,
-                            0,  sp,  cp);
-    float3x3 Rr = float3x3( cr, -sr, 0,
-                            sr,  cr, 0,
+                            0,  cp,  sp,
+                            0, -sp,  cp);
+    float3x3 Rr = float3x3( cr,  sr, 0,
+                           -sr,  cr, 0,
                             0,   0,  1);
     return mul(Ry, mul(Rp, Rr));
 }
@@ -137,6 +137,16 @@ bool inScreenBounds(float3 S)
     float ang = atan2(S.x, S.z);                 // 0 at +Z, +right
     float halfArc = DEG2RAD(ScreenArcDeg) * 0.5;
     return (abs(ang) <= halfArc) && (abs(S.y) <= ScreenHeight * 0.5);
+}
+
+// True if the projector is rear: outside the cylinder radius AND in front of the
+// screen arc. Outside the radius but behind or beside the arc, the beam crosses the
+// non-screen part of the cylinder and lands on the concave side the viewer sees
+// directly, so no mirror applies.
+bool isRearProjector(float3 p)
+{
+    return (length(p.xz) > ScreenRadius) &&
+           (abs(atan2(p.x, p.z)) <= DEG2RAD(ScreenArcDeg) * 0.5);
 }
 
 // Intersect a ray (origin o, dir d) with an infinite vertical cylinder of radius R
@@ -174,11 +184,10 @@ float4 PS_BendR(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
     float2 ndc = uv * 2.0 - 1.0;
     ndc.y = -ndc.y;  // screen-space y is down
 
-    // Rear projection: projector sits OUTSIDE the cylinder (axis distance > radius).
-    // Light passes through the screen to the viewer, so the emitted image is
+    // Rear projection: projector is outside the cylinder and in front of the screen
+    // arc. Light passes through the screen to the viewer, so the emitted image is
     // mirrored left-right. Flip ndc.x in that case.
-    bool rear = length(ProjPos.xz) > ScreenRadius;
-    if (rear) ndc.x = -ndc.x;
+    if (isRearProjector(ProjPos)) ndc.x = -ndc.x;
 
     float tanH = tan(DEG2RAD(ProjHFovDeg) * 0.5);
     float tanV = tanH / ProjAspect;
