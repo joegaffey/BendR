@@ -98,10 +98,17 @@
   body.run #lower { grid-template-columns:1fr; }
   body.run #eyeWrap { display:none; }
   body.run .tag { display:none; }
-  #fsOverlay { position:fixed; inset:0; display:flex; align-items:center;
-               justify-content:center; background:rgba(0,0,0,.6); z-index:20; }
-  #fsOverlay.hidden { display:none; }
-  #fsOverlay button { font-size:15px; padding:12px 22px; }
+  /* Output-mode controls (spec/09-runtime.md): minimal, auto-hiding so they are
+     not projected. Shown on mouse move and hidden with the cursor when idle. */
+  #outBar { position:fixed; top:10px; right:10px; display:flex; gap:6px; padding:6px;
+            background:rgba(13,17,23,.8); border:1px solid var(--line); border-radius:8px;
+            z-index:20; transition:opacity .2s; }
+  #outBar.hidden { opacity:0; pointer-events:none; }
+  #outBar button { background:#21262d; color:var(--text); border:1px solid var(--line);
+                   border-radius:6px; padding:6px 10px; font:inherit; font-size:12px;
+                   cursor:pointer; }
+  #outBar button:hover { background:#30363d; border-color:#8b949e; }
+  #outBar button.active { color:var(--accent); border-color:var(--accent); }
 </style>
 </head>
 <body>
@@ -407,7 +414,7 @@ const slidersEl = document.getElementById('sliders');
 const valEls = {};
 const sliderEls = {};
 const aspectReflectors = {};
-let projPillsEl, autoAimEl, gameSelectEl;
+let projPillsEl, autoAimEl, gameSelectEl, gridCheckEl;
 
 // Each control group is a collapsible section: a clickable .cat header + a body.
 // Controls are appended to sectionBody, which addSection points at the group being
@@ -598,6 +605,7 @@ for (const [cat, items] of SLIDER_DEFS) {
   if(cat==='Calibration'){
     const row=document.createElement('div'); row.className='row check';
     const c=document.createElement('input'); c.type='checkbox'; c.checked=true;
+    gridCheckEl=c;
     const l=document.createElement('label'); l.textContent='Show Calibration Grid';
     c.addEventListener('change',()=>{ P.showGrid=c.checked?1:0; updateAll(); });
     row.appendChild(c); row.appendChild(l); sectionBody.appendChild(row);
@@ -1587,29 +1595,68 @@ window.addEventListener('message',(e)=>{
     // A newly opened output asks for the current state.
     if(e.source && e.source.postMessage)
       e.source.postMessage({type:'config', config:serializeConfig()}, location.origin);
+  } else if(!isOutput && d.type==='grid'){
+    // An output toggled the calibration grid; adopt it and rebroadcast.
+    P.showGrid=d.showGrid?1:0;
+    if(gridCheckEl) gridCheckEl.checked=P.showGrid>=0.5;
+    updateAll();
   }
 });
 
-// Output mode: fullscreen prompt, cursor auto-hide, and the ready handshake.
+// Output mode: minimal auto-hiding controls (close, fullscreen, grid) plus the
+// ready handshake.
 if(isOutput){
   document.body.classList.add('run');
-  const ov=document.createElement('div'); ov.id='fsOverlay';
-  const btn=document.createElement('button'); btn.textContent='Go fullscreen';
-  btn.addEventListener('click',()=>{
-    if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+  const bar=document.createElement('div'); bar.id='outBar';
+
+  const closeBtn=document.createElement('button');
+  closeBtn.textContent='Close'; closeBtn.title='Close this output window';
+  closeBtn.addEventListener('click',()=>window.close());
+
+  const fsBtn=document.createElement('button');
+  fsBtn.textContent='Fullscreen'; fsBtn.title='Toggle fullscreen';
+  fsBtn.addEventListener('click',()=>{
+    if(document.fullscreenElement){
+      if(document.exitFullscreen) document.exitFullscreen();
+    } else if(document.documentElement.requestFullscreen){
+      document.documentElement.requestFullscreen();
+    }
   });
-  // Clicking the backdrop dismisses the prompt (e.g. to just maximize instead).
-  ov.addEventListener('click',e=>{ if(e.target===ov) ov.classList.add('hidden'); });
-  ov.appendChild(btn); document.body.appendChild(ov);
+
+  const gridBtn=document.createElement('button');
+  gridBtn.textContent='Grid'; gridBtn.title='Show/hide the calibration grid';
+  gridBtn.classList.toggle('active', P.showGrid>=0.5);
+  gridBtn.addEventListener('click',()=>{
+    P.showGrid=P.showGrid>=0.5?0:1;
+    gridBtn.classList.toggle('active', P.showGrid>=0.5);
+    updateAll();
+    // Keep the controller's checkbox in step when one is driving this window.
+    if(window.opener){
+      try{ window.opener.postMessage({type:'grid', showGrid:P.showGrid>=0.5}, location.origin); }catch(err){}
+    }
+  });
+
+  bar.appendChild(closeBtn); bar.appendChild(fsBtn); bar.appendChild(gridBtn);
+  document.body.appendChild(bar);
+
   document.addEventListener('fullscreenchange',()=>{
-    ov.classList.toggle('hidden', !!document.fullscreenElement);
+    fsBtn.textContent = document.fullscreenElement ? 'Exit fullscreen' : 'Fullscreen';
+    fsBtn.classList.toggle('active', !!document.fullscreenElement);
   });
-  let cursorTimer;
-  document.addEventListener('mousemove',()=>{
+
+  // Auto-hide the controls with the cursor so they are not projected.
+  let idleTimer;
+  function wake(){
+    bar.classList.remove('hidden');
     document.body.style.cursor='';
-    clearTimeout(cursorTimer);
-    cursorTimer=setTimeout(()=>{ document.body.style.cursor='none'; },2500);
-  });
+    clearTimeout(idleTimer);
+    idleTimer=setTimeout(()=>{
+      bar.classList.add('hidden'); document.body.style.cursor='none';
+    },2500);
+  }
+  document.addEventListener('mousemove', wake);
+  wake();
+
   if(window.opener){
     try{ window.opener.postMessage({type:'ready'}, location.origin); }catch(err){}
   }

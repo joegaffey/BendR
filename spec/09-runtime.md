@@ -25,8 +25,8 @@ drift between them.
 - **Controller** — the simulator in normal mode. Owns all state and controls; the
   collapsible sidebar is the control surface.
 - **Output** — `web/index.html#output=<j>&cfg=<base64>`, a separate browser window that
-  renders projector *j*'s warp full-window. It has no sidebar; its only chrome is a
-  fullscreen prompt (see "Fullscreen").
+  renders projector *j*'s warp full-window. It has no sidebar; its only chrome is a small
+  auto-hiding control bar (see "Output controls").
 
 Both roles run on the **same host** (one browser, one origin). Cross-machine use is
 export-only, not live sync.
@@ -112,18 +112,22 @@ ReShade preset generator derives from it.
 - `source.image` is a source-image name (a `GAME_IMAGES` key, e.g. `"iRacing"`) or null
   (the synthetic test grid); `showGrid` and `gridLines` are the calibration overlay.
 
-## Fullscreen
+## Output controls
 
-The browser requires a user gesture in each document, so the controller cannot put an
-output fullscreen. Each output shows a centered **Go fullscreen** prompt:
+The output window carries a minimal control bar (top-right) with three actions:
 
-- On click, `document.documentElement.requestFullscreen()`.
-- The prompt hides while `document.fullscreenElement` is set and reappears when the user
-  exits (the `fullscreenchange` handler).
-- The cursor auto-hides after a few idle seconds so it is not projected.
+- **Close** — closes the output window (`window.close()`).
+- **Fullscreen** — toggles `document.documentElement.requestFullscreen()` /
+  `document.exitFullscreen()`. The browser requires a user gesture in each document, so
+  the controller cannot put an output fullscreen; this button supplies that gesture. The
+  label flips to **Exit fullscreen** while `document.fullscreenElement` is set.
+- **Grid** — toggles the calibration-grid overlay on this output. The state is posted back
+  to the controller (`{ type: 'grid', showGrid }`), which updates its own checkbox and
+  rebroadcasts, so every open output stays in step.
 
-Maximizing the window is an acceptable alternative; fullscreen is only about removing the
-browser chrome.
+The bar and the cursor auto-hide after a few idle seconds so neither is projected; moving
+the mouse brings them back. Maximizing the window is an acceptable alternative to
+fullscreen; fullscreen is only about removing the browser chrome.
 
 ## Export
 
