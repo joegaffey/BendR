@@ -119,8 +119,9 @@
     <div id="sliders"></div>
     <div class="hint">
       Drag in the 3D view to orbit. Add projectors and tune each one's pose; set
-      <b>Blend</b> widths where beams overlap. The <b>Eye View</b> composites every
-      enabled projector — straight grid and an invisible seam means a correct warp and
+      <b>Blend</b> widths where beams overlap. Every projector is warped to the
+      <b>Eye-point</b> sweet spot, so the <b>Eye View</b> from that point composites the
+      enabled projectors — straight grid and an invisible seam means a correct warp and
       blend. Uncheck <b>Warp follows projector</b> and move a projector to see the
       mis-calibration appear in the Eye View. <b>Projector Output</b> shows the active
       projector's emitted image.
@@ -396,7 +397,7 @@ const SLIDER_DEFS = [
     ['screenBase','Base Height (m)',0,2,0.01],
     ['screenArcDeg','Arc (deg)',30,270,1],
   ]],
-  ['Eye-point', [
+  ['Eye-point (warp sweet spot)', [
     ['eyeX','Eye X (m)',-3,3,0.01],
     ['eyeY','Eye Height (m)',0,3,0.01],
     ['eyeZ','Eye Z (m)',-3,3,0.01],
@@ -609,6 +610,13 @@ for (const [cat, items] of SLIDER_DEFS) {
     const l=document.createElement('label'); l.textContent='Show Calibration Grid';
     c.addEventListener('change',()=>{ P.showGrid=c.checked?1:0; updateAll(); });
     row.appendChild(c); row.appendChild(l); sectionBody.appendChild(row);
+  }
+  if(cat==='Eye-point (warp sweet spot)'){
+    const note=document.createElement('div'); note.className='hint';
+    note.textContent='Every projector is pre-distorted to look correct from this point, '+
+      'so moving it re-warps the emitted image. It is the calibration viewpoint, not a '+
+      'movable observer.';
+    sectionBody.appendChild(note);
   }
 }
 

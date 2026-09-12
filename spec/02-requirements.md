@@ -27,9 +27,13 @@ Requirement IDs are stable. Status values: **Done**, **Partial**, **Planned**.
 
 | ID | Requirement | Status |
 |---|---|---|
-| FR-10 | Accept eye-point position as the reference viewpoint for correctness. | Done |
+| FR-10 | Accept eye-point position as the reference (warp sweet-spot) viewpoint for correctness. | Done |
 | FR-11 | Accept the game's horizontal FOV to match the source projection. | Done |
 | FR-12 | Treat viewer gaze as fixed forward (+Z); do not auto-aim the eye. | Done |
+
+Rationale for FR-10: the eye-point is the calibration viewpoint the warp is baked for,
+not a movable observer. Moving it re-warps every projector; a viewer elsewhere sees that
+fixed warp off-axis (C-4).
 
 Rationale for FR-12: the warp must be correct across the viewer's whole field of view
 from a natural seated pose. Aiming the eye at screen centre would model head rotation,

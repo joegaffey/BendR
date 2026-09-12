@@ -57,8 +57,10 @@ rays that hit outside the screen bounds render near-black.
 
 ### Eye View
 
-What the seated viewer perceives, rendered as a **two-pass** composite so that a
-mis-calibration shows up as a displaced/distorted image.
+What the seated viewer perceives from the **warp sweet spot** (the eye-point), rendered
+as a **two-pass** composite so that a mis-calibration shows up as a displaced/distorted
+image. The warp is baked for that point, so the Eye View is only a correctness check
+there; an observer elsewhere would see the same fixed warp off-axis.
 
 - **Pass 1 (emit).** Each projector's warp is rendered into its own panel-indexed
   texture, using the projector's **calibration pose**.
@@ -85,7 +87,7 @@ are specified in `03-geometry.md`.
 | Control | Type | Default | Behaviour |
 |---|---|---|---|
 | Screen radius / height / arc | slider | 1.5 m / 1.0 m / 150° | Rebuilds screen mesh |
-| Eye X / Y / Z | slider | 0, 0, 0 | Warp reference viewpoint |
+| Eye X / Y / Z | slider | 0, 0, 0 | Warp sweet spot: the calibration viewpoint every projector is warped to |
 | Game FOV | slider | 90° | Must match the sim's FOV setting |
 | Projector X / Y / Z | slider | 0, 0.6, −1.3 | Overhead default |
 | Projector yaw / pitch / roll | slider | 0, −15, 0 | Disabled while auto-aim is on |

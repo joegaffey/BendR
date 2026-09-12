@@ -71,10 +71,14 @@ A warp is correct only for a specific combination of:
 
 1. **Projector pose** — where the light originates, plus intrinsics.
 2. **Screen shape** — the surface the light lands on.
-3. **Eye-point** — the viewpoint the correction targets.
+3. **Eye-point** — the viewpoint the correction targets, i.e. the warp **sweet spot**.
 
 Changing any one changes the correct warp. Generic radial lens shaders cannot express
 off-axis correction because they model neither projector pose nor eye-point.
+
+The eye-point is the *calibration* viewpoint, not a movable observer. The warp is baked
+for it, so moving it re-warps every projector; a real observer who sits elsewhere sees
+the fixed warp off-axis, and correcting for that is out of scope (C-4).
 
 ## Warp derivation
 
