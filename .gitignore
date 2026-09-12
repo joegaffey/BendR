@@ -14,3 +14,7 @@ build/
 
 # Local calibration saves (user-specific)
 *.local.json
+
+# Test automation artifacts
+test-results/
+playwright-report/

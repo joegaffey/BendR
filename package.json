@@ -1,0 +1,21 @@
+{
+  "name": "bendr",
+  "version": "0.0.0",
+  "private": true,
+  "description": "BendR — geometry-driven mesh warping + edge blending. Test automation.",
+  "type": "module",
+  "scripts": {
+    "serve": "node tests/server.mjs",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:update": "playwright test --update-snapshots",
+    "test:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
+    "@playwright/test": "^1.55.0",
+    "pixelmatch": "^6.0.0",
+    "pngjs": "^7.0.0",
+    "three": "0.160.0"
+  }
+}

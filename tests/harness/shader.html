@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>BendR shader parity harness</title>
+</head>
+<body>
+  <canvas id="c" width="128" height="128"></canvas>
+  <script type="module">
+    // Offscreen renderer for the app's warp shader (mode 0, active projector output).
+    // It extracts the shader source from web/index.html at runtime so the app stays a
+    // single file (NFR-3) and there is exactly one source of truth for the GLSL.
+    //
+    // The source texture is a UV ramp: texel (i,j) stores the coordinate of its own
+    // centre, so a linear sample at (u,v) returns (u,v). The rendered pixel therefore
+    // reveals the shader's computed source UV directly, which the Node-side oracle
+    // compares against an independent CPU ray-trace.
+    const SIZE = 128;
+    const CONFIG = {
+      screenRadius: 1.5,
+      screenHeight: 1.5,
+      screenArcDeg: 150,
+      screenBase: 0.45,
+      eye: { x: 0, y: 1.2, z: 0 },
+      gameHFovDeg: 90,
+      sourceAspect: 1.777,
+      paneAspect: 1.0,
+      cal: {
+        pos: { x: 0, y: 2.2, z: -1.3 },
+        rot: { yaw: 0, pitch: -19.653824058053313, roll: 0 },
+        hFovDeg: 90,
+        aspect: 1.777,
+      },
+    };
+
+    async function main() {
+      const html = await (await fetch('/web/index.html')).text();
+      const frag = html.match(/const WARP_GLSL = `([\s\S]*?)`;/)[1];
+      const vert = html.match(/const VERT = `([\s\S]*?)`;/)[1];
+
+      const canvas = document.getElementById('c');
+      const gl = canvas.getContext('webgl2', { antialias: false, preserveDrawingBuffer: true });
+      if (!gl) throw new Error('WebGL2 unavailable');
+
+      const compile = (type, src) => {
+        // three.js prepends this for RawShaderMaterial + GLSL3; do the same here.
+        const s = gl.createShader(type);
+        gl.shaderSource(s, '#version 300 es\n' + src);
+        gl.compileShader(s);
+        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+          throw new Error('shader compile failed: ' + gl.getShaderInfoLog(s));
+        }
+        return s;
+      };
+      const prog = gl.createProgram();
+      gl.attachShader(prog, compile(gl.VERTEX_SHADER, vert));
+      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, frag));
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+        throw new Error('link failed: ' + gl.getProgramInfoLog(prog));
+      }
+      gl.useProgram(prog);
+
+      // Fullscreen quad: position (vec3, clip space) + uv (vec2).
+      const vao = gl.createVertexArray();
+      gl.bindVertexArray(vao);
+      const data = new Float32Array([
+        -1, -1, 0, 0, 0,
+         1, -1, 0, 1, 0,
+        -1,  1, 0, 0, 1,
+         1,  1, 0, 1, 1,
+      ]);
+      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+      const posLoc = gl.getAttribLocation(prog, 'position');
+      const uvLoc = gl.getAttribLocation(prog, 'uv');
+      gl.enableVertexAttribArray(posLoc);
+      gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 20, 0);
+      gl.enableVertexAttribArray(uvLoc);
+      gl.vertexAttribPointer(uvLoc, 2, gl.FLOAT, false, 20, 12);
+
+      // UV ramp texture.
+      const T = 256;
+      const tex = new Uint8Array(T * T * 4);
+      for (let j = 0; j < T; j++) {
+        for (let i = 0; i < T; i++) {
+          const o = (j * T + i) * 4;
+          tex[o] = Math.round(((i + 0.5) / T) * 255);
+          tex[o + 1] = Math.round(((j + 0.5) / T) * 255);
+          tex[o + 2] = 0;
+          tex[o + 3] = 255;
+        }
+      }
+      const texObj = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texObj);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, T, T, 0, gl.RGBA, gl.UNSIGNED_BYTE, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+      const loc = (name) => gl.getUniformLocation(prog, name) || gl.getUniformLocation(prog, name.replace('[0]', ''));
+      const u1f = (n, v) => { const l = loc(n); if (l) gl.uniform1f(l, v); };
+      const u1i = (n, v) => { const l = loc(n); if (l) gl.uniform1i(l, v); };
+      const u3f = (n, x, y, z) => { const l = loc(n); if (l) gl.uniform3f(l, x, y, z); };
+
+      u1f('uScreenRadius', CONFIG.screenRadius);
+      u1f('uScreenHeight', CONFIG.screenHeight);
+      u1f('uScreenArcDeg', CONFIG.screenArcDeg);
+      u1f('uScreenBase', CONFIG.screenBase);
+      u3f('uEyePos', CONFIG.eye.x, CONFIG.eye.y, CONFIG.eye.z);
+      u1f('uGameHFovDeg', CONFIG.gameHFovDeg);
+      u1f('uSourceAspect', CONFIG.sourceAspect);
+      u1f('uPaneAspect', CONFIG.paneAspect);
+      u1f('uGridLines', 0);
+      u1f('uShowGrid', 0);
+      u1f('uMode', 0);            // active projector output
+      u1i('uActiveProj', 0);
+      u1f('uUseTex', 1);
+      u1f('uTexAspect', CONFIG.sourceAspect);
+      u3f('uCalPos[0]', CONFIG.cal.pos.x, CONFIG.cal.pos.y, CONFIG.cal.pos.z);
+      u3f('uCalRotDeg[0]', CONFIG.cal.rot.yaw, CONFIG.cal.rot.pitch, CONFIG.cal.rot.roll);
+      u1f('uCalHFovDeg[0]', CONFIG.cal.hFovDeg);
+      u1f('uCalAspect[0]', CONFIG.cal.aspect);
+
+      // Distinct units per sampler to avoid same-unit sampler validation issues.
+      gl.uniform1i(loc('uGameTex'), 0);
+      for (let i = 0; i < 4; i++) gl.uniform1i(loc('uEmit' + i), 1 + i);
+      for (let unit = 0; unit < 5; unit++) {
+        gl.activeTexture(gl.TEXTURE0 + unit);
+        gl.bindTexture(gl.TEXTURE_2D, texObj);
+      }
+
+      gl.bindVertexArray(vao);
+      gl.viewport(0, 0, SIZE, SIZE);
+      gl.disable(gl.DEPTH_TEST);
+      gl.disable(gl.BLEND);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.finish();
+
+      const pixels = new Uint8Array(SIZE * SIZE * 4);
+      gl.readPixels(0, 0, SIZE, SIZE, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+      window.__parity = { size: SIZE, pixels: Array.from(pixels), config: CONFIG };
+      window.__parityReady = true;
+    }
+
+    main().catch((err) => {
+      window.__parityError = String((err && err.stack) || err);
+      window.__parityReady = true;
+    });
+  </script>
+</body>
+</html>
