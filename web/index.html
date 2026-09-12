@@ -546,12 +546,13 @@ function refreshProjectorList(){
     x.addEventListener('click',()=>deleteProjector(i));
     const launch=document.createElement('button'); launch.className='proj-launch';
     if(outputWindows[i] && !outputWindows[i].closed) launch.classList.add('open');
-    launch.title='Launch this projector output';
+    launch.title=(outputWindows[i] && !outputWindows[i].closed)
+      ? 'Close this projector output' : 'Launch this projector output';
     launch.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" '+
       'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+
       '<rect x="2" y="3" width="20" height="14" rx="2"/>'+
       '<line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>';
-    launch.addEventListener('click',()=>{ launchOutput(i); refreshProjectorList(); });
+    launch.addEventListener('click',()=>toggleOutput(i));
     top.appendChild(dot); top.appendChild(name); top.appendChild(launch); top.appendChild(x);
 
     const opts=document.createElement('div'); opts.className='proj-row-opts';
@@ -1543,6 +1544,14 @@ function launchOutput(i){
 // Open (or focus) one output window per enabled projector.
 function launchOutputs(){
   P.projectors.forEach((pr,i)=>{ if(pr.enabled>=0.5) launchOutput(i); });
+}
+
+// Toggle a single projector's output window (per-row button).
+function toggleOutput(i){
+  const w=outputWindows[i];
+  if(w && !w.closed){ w.close(); outputWindows[i]=null; }
+  else launchOutput(i);
+  refreshProjectorList();
 }
 
 // Push the current config to every open output window.
