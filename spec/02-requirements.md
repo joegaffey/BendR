@@ -79,10 +79,11 @@ FR-30 supersedes FR-27: shadow-casting models make occlusion directly visible ra
 than inferred. FR-31 shares the render-to-texture foundation with FR-25. Both are
 specified in `08-backlog.md`.
 
-FR-25 is partial: the eye view currently reconstructs the frame from the analytic warp
-rather than photographing the projector's actual output texture. Because the warp is
-self-consistent, a mis-calibration does not visibly distort the eye view. See
-`04-web-simulator.md`.
+FR-25 is **Partial**: the web simulator now implements the rigorous two-pass eye view
+with a calibration/actual pose split, so a frozen warp makes a moved projector show its
+mis-calibration as a displaced image. It remains partial because the standalone app does
+not yet have it, and the eye still uses a fixed `kEyeRefAspect` viewer stand-in rather
+than a true perspective camera. See `04-web-simulator.md` and `07-roadmap.md`.
 
 ### Source input
 

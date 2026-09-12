@@ -57,16 +57,25 @@ rays that hit outside the screen bounds render near-black.
 
 ### Eye View
 
-What the seated viewer perceives. Casts rays from the eye-point along +Z, intersects
-the screen, and shows what is painted there. When parameters are correct, the
-calibration grid appears straight and evenly spaced.
+What the seated viewer perceives, rendered as a **two-pass** composite so that a
+mis-calibration shows up as a displaced/distorted image.
 
-**Known limitation (FR-25).** The eye view reconstructs the frame directly from the
-analytic warp rather than sampling the projector's rendered output. Because the warp
-is self-consistent, a mis-calibration does not visibly distort this view, so it cannot
-currently detect an incorrect warp. The rigorous form is a two-pass render: draw the
-projector output to a texture, then have the eye photograph the screen with that
-texture applied. This is the prerequisite for a viewer-perspective render.
+- **Pass 1 (emit).** Each projector's warp is rendered into its own panel-indexed
+  texture, using the projector's **calibration pose**.
+- **Pass 2 (photograph).** For each eye ray, the screen point `S` is found; for every
+  projector covering `S` (via its **actual pose**), the emitted texture is sampled at
+  the corresponding panel coordinate and summed with the alpha ramps and photometrics.
+
+The two passes are deliberately not each other's inverse: pass 1 uses the calibration
+pose, pass 2 the actual pose. When they are equal (the default) the result is the ideal
+image; when they diverge (see "Warp Calibration" below) the eye sees the stale warp
+landing in the wrong place. When parameters are correct, the calibration grid appears
+straight and evenly spaced.
+
+When every enabled projector's calibration pose equals its actual pose, the two passes
+are mathematically identical to sampling the game directly, so the simulator skips pass 1
+and uses the sharp single-pass path. The emit textures and the supersampled pass 2 are
+used only while a calibration pose differs (a frozen, moved warp).
 
 ## Controls
 
@@ -87,6 +96,8 @@ are specified in `03-geometry.md`.
 | Auto-fit FOV to screen | checkbox | on | Derives FOV from screen coverage |
 | Show calibration grid | checkbox | on | Grid drawn in source space |
 | Grid lines | slider | 12 | Grid density |
+| Warp follows projector | checkbox | on | Calibration pose tracks the actual projector pose |
+| Recalibrate | button | – | Snap the calibration pose to the current actual pose |
 
 Derived controls grey out while their automatic mode is active and display the computed
 value, so the sliders remain a readable report of the current pose. Changing projector
@@ -105,15 +116,17 @@ Implemented. The simulator is the validation sandbox for the blend model in
 | Black level / gamma / gain | sliders | Per-projector photometrics for black-level lift and gamma correction |
 | Eye View | pane | The composite: sums every covering projector's light at each screen point, ramps normalised to a partition of unity |
 
-The **Projector Output** pane shows the active projector's warp, so each projector is
-validated independently (AC-9). The **Eye View** validates the blend (AC-8). Black-level
-lift is computed by sampling the screen geometry and applying the deepest-overlap floor.
+The **Projector Output** pane shows the active projector's warp (from its calibration
+pose), so each projector is validated independently (AC-9). The **Eye View** validates
+the blend (AC-8) and, with the warp frozen, the geometry (FR-25). Black-level lift is
+computed by sampling the screen geometry and applying the deepest-overlap floor.
 
-**Known limitation.** The composite is a single-pass idealisation: every covering
-projector is assumed to place the ideal source at each screen point, so a geometric
-mis-aim is not shown as distortion — only photometric mismatches and ramp seams are.
-Showing mis-calibration requires the two-pass eye view (FR-25, `07-roadmap.md`), which
-shares this composite's render-to-texture foundation.
+**Calibration vs actual pose.** Each projector carries a calibration pose (used to
+compute the warp) and an actual pose (where it physically is). "Warp follows projector"
+keeps them equal. Unchecking it freezes the warp, so moving the projector makes the Eye
+View show the stale image landing wrongly — the check a real rig needs. "Recalibrate"
+snaps the warp to the current pose. The 3D scene draws the calibration pose as a ghost
+frustum while frozen.
 
 Per-projector photometrics are deliberately limited to black, gain, and gamma —
 colour/white-point matching is out of scope (`01-overview.md`).
@@ -133,9 +146,13 @@ rather than a single display's ~1.78. They are currently sampled whole as the ga
 so the source is roughly three times too wide for the assumed projection. Region selection
 and a matching source FOV are required — see D-3 in `08-backlog.md`.
 
-Textures load with sRGB colour space, linear filtering, and clamp-to-edge for
-non-power-of-two sizes. `flipY` is disabled because the shader already flips Y to match
-the top-left origin of `srcUV`; leaving both enabled double-flips the image.
+Textures load with **no colour-space conversion** (`NoColorSpace`), linear filtering, and
+clamp-to-edge for non-power-of-two sizes. The shader treats the sampled value as the
+game's sRGB-encoded signal and applies the projector transfer itself, so the texture must
+be sampled raw. Setting `SRGBColorSpace` would upload `SRGB8_ALPHA8`, decode to linear on
+sample, and make the shader apply gamma to already-linear values — the image comes out
+dark. `flipY` is disabled because the shader already flips Y to match the top-left origin
+of `srcUV`; leaving both enabled double-flips the image.
 
 Assets total roughly 19 MB, dominated by one PNG at about 10 MB. Converting it to JPEG
 would reclaim most of that.

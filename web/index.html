@@ -50,7 +50,9 @@
       Drag in the 3D view to orbit. Add projectors and tune each one's pose; set
       <b>Blend</b> widths where beams overlap. The <b>Eye View</b> composites every
       enabled projector — straight grid and an invisible seam means a correct warp and
-      blend. <b>Projector Output</b> shows the active projector's pre-distorted image.
+      blend. Uncheck <b>Warp follows projector</b> and move a projector to see the
+      mis-calibration appear in the Eye View. <b>Projector Output</b> shows the active
+      projector's emitted image.
     </div>
   </div>
   <div id="views">
@@ -81,10 +83,21 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // Must match MAXP in WARP_GLSL (and the shader's uniform array sizes).
 const MAX_PROJECTORS = 4;
 
+// Snapshot a projector's actual pose + intrinsics into its calibration pose. The
+// warp (emitted image) is computed from the calibration pose; the actual pose is
+// where the projector physically is. They are equal while "Warp follows projector"
+// is on, and diverge when it is frozen, which is what makes the eye view show a
+// mis-calibration as a displaced/distorted image.
+function snapshotCal(pr){
+  return { x:pr.projX, y:pr.projY, z:pr.projZ,
+           yaw:pr.projYaw, pitch:pr.projPitch, roll:pr.projRoll,
+           hFov:pr.projHFovDeg, aspect:pr.projAspect };
+}
+
 // One projector: full pose + intrinsics, auto-aim, edge-blend widths, and the
 // per-projector photometrics from spec/03-geometry.md (black / gamma / gain).
 function makeProjector(i){
-  return {
+  const pr = {
     name: 'Projector ' + (i+1),
     enabled: 1,
     projX: 0.0, projY: 2.2, projZ: -1.3,
@@ -94,6 +107,8 @@ function makeProjector(i){
     blendLeft: 0.0, blendRight: 0.0, blendTop: 0.0, blendBottom: 0.0,
     blackLevel: 0.0, gamma: 2.2, gain: 1.0,
   };
+  pr.cal = snapshotCal(pr);
+  return pr;
 }
 
 // Screen/eye/global parameters live on P. Per-projector parameters are proxied
@@ -106,6 +121,7 @@ const P = {
   gridLines: 12.0, showGrid: 1.0,
   projectors: [makeProjector(0)],
   activeProj: 0,
+  warpFollows: 1.0,   // when on, calibration pose tracks the actual projector pose
 };
 
 const PROJ_KEYS = ['projX','projY','projZ','projYaw','projPitch','projRoll',
@@ -135,6 +151,30 @@ function applyAutoAim(pr){
   pr.projRoll  = 0.0;
 }
 function applyAutoAimAll(){ for(const pr of P.projectors) applyAutoAim(pr); }
+
+// If the warp follows the projector, keep each calibration pose equal to the
+// actual pose. Called after auto-aim so the calibration sees the aimed pose.
+function syncCalibration(){
+  if(P.warpFollows < 0.5) return;
+  for(const pr of P.projectors) pr.cal = snapshotCal(pr);
+}
+
+// True when a projector's warp pose matches where it physically is. Then the emitted
+// texture is exactly the ideal image, so the Eye View can take the sharp single-pass
+// path and skip the emit pass entirely.
+function calEqualsActual(pr){
+  const c=pr.cal, e=0.0001;
+  return Math.abs(c.x-pr.projX)<e && Math.abs(c.y-pr.projY)<e && Math.abs(c.z-pr.projZ)<e &&
+         Math.abs(c.yaw-pr.projYaw)<e && Math.abs(c.pitch-pr.projPitch)<e &&
+         Math.abs(c.roll-pr.projRoll)<e && Math.abs(c.hFov-pr.projHFovDeg)<e &&
+         Math.abs(c.aspect-pr.projAspect)<e;
+}
+function eyeDirectEnabled(){
+  for(const pr of P.projectors){
+    if(pr.enabled>=0.5 && !calEqualsActual(pr)) return false;
+  }
+  return true;
+}
 
 // Sim screenshots (copied from muscled). Label -> path. "Test Grid" = synthetic.
 const GAME_IMAGES = {
@@ -383,6 +423,27 @@ function appendSlider(key,label,min,max,step){
   row.appendChild(c); row.appendChild(l); slidersEl.appendChild(row);
 }
 
+// Warp calibration: decouple the warp (computed from the calibration pose) from
+// the actual projector pose. With "Warp follows projector" off, moving a projector
+// shows the mis-calibration as a displaced/distorted image in the Eye View.
+{
+  const h=document.createElement('div'); h.className='cat'; h.textContent='Warp Calibration';
+  slidersEl.appendChild(h);
+  const row=document.createElement('div'); row.className='row check';
+  const c=document.createElement('input'); c.type='checkbox'; c.checked=true;
+  const l=document.createElement('label'); l.textContent='Warp follows projector';
+  c.addEventListener('change',()=>{ P.warpFollows=c.checked?1:0; updateAll(); });
+  row.appendChild(c); row.appendChild(l); slidersEl.appendChild(row);
+  const brow=document.createElement('div'); brow.className='row';
+  const b=document.createElement('button'); b.textContent='Recalibrate (snap warp to pose)';
+  b.style.flex='1';
+  b.addEventListener('click',()=>{
+    for(const pr of P.projectors) pr.cal=snapshotCal(pr);
+    updateAll();
+  });
+  brow.appendChild(b); slidersEl.appendChild(brow);
+}
+
 // Enable/disable the manual aim sliders (yaw/pitch/roll) when auto-aim toggles.
 function setAimSlidersDisabled(disabled){
   for(const key of ['projYaw','projPitch','projRoll']){
@@ -438,6 +499,18 @@ out vec4 fragColor;
   uniform vec4  uBlend[MAXP];   // left, right, top, bottom widths
   uniform vec3  uPhoto[MAXP];   // blackLevel, gamma, gain
   uniform float uBlackLift;     // black-level lift target B
+
+  // Calibration pose/intrinsics: the warp (emitted image) is computed from these.
+  // The actual pose (uProj*) is where the projector physically is. The eye
+  // composite samples the emitted texture through the actual pose, so any
+  // divergence between the two shows as a displaced/distorted image.
+  uniform vec3  uCalPos[MAXP];
+  uniform vec3  uCalRotDeg[MAXP];
+  uniform float uCalHFovDeg[MAXP];
+  uniform float uCalAspect[MAXP];
+  uniform int   uEmitProj;   // projector the emit pass is rendering
+  uniform sampler2D uEmit0, uEmit1, uEmit2, uEmit3; // emitted images, per projector
+  uniform float uEyeDirect;  // 1 = ideal single-pass (calibration pose == actual pose)
 
   const float PI = 3.14159265358979;
   float d2r(float d){ return d*PI/180.0; }
@@ -536,6 +609,9 @@ out vec4 fragColor;
     float tanH=tan(d2r(uProjHFovDeg[j])*0.5);
     float tanV=tanH/uProjAspect[j];
     vec2 ndc=vec2(local.x/local.z/tanH, local.y/local.z/tanV);
+    // Apply the same rear-projection mirror the emit pass uses, so the returned
+    // coordinate indexes the emitted panel texture rather than the raw projection.
+    if(length(uProjPos[j].xz) > uScreenRadius) ndc.x = -ndc.x;
     ndcOut=ndc;
     return abs(ndc.x)<=1.0 && abs(ndc.y)<=1.0; // inside the panel rectangle
   }
@@ -561,6 +637,17 @@ out vec4 fragColor;
   }
 
   vec3 linearToSrgb(vec3 c){ return pow(max(c,vec3(0.0)),vec3(1.0/2.2)); }
+
+  // Sample projector j's emitted image (rendered at its calibration pose) at a
+  // panel NDC. The y flip matches the emit pass, which wrote ndc.y = 1-2*vUv.y.
+  vec3 emitSample(int j, vec2 ndc){
+    vec2 uv=ndc*0.5+0.5;
+    uv.y=1.0-uv.y;
+    if(j==0) return texture(uEmit0, uv).rgb;
+    if(j==1) return texture(uEmit1, uv).rgb;
+    if(j==2) return texture(uEmit2, uv).rgb;
+    return texture(uEmit3, uv).rgb;
+  }
 
   // For a screen point S, get the source UV as seen from the eye.
   // The source frame's vertical FOV follows its own aspect (uSourceAspect),
@@ -589,39 +676,61 @@ out vec4 fragColor;
 
   void main(){
     if(uMode<0.5){
-      // ---- ACTIVE PROJECTOR OUTPUT: for each panel pixel -> warped source ----
+      // ---- ACTIVE PROJECTOR OUTPUT: the image the projector is fed. Computed
+      // from the CALIBRATION pose, so a frozen warp stays put as the projector moves.
       int a=uActiveProj;
       vec2 ndc=vUv*2.0-1.0; ndc.y=-ndc.y;
       // Keep the projector's true image aspect regardless of the pane aspect,
       // filling the spare pane area with background (D-2).
-      ndc=fitNDC(ndc, uProjAspect[a]);
+      ndc=fitNDC(ndc, uCalAspect[a]);
       if(outsideImage(ndc)){ fragColor=kBg; return; }
       // Rear projection: projector sits OUTSIDE the cylinder (its distance from the
       // Y axis exceeds the screen radius). Light passes through the screen to the
       // viewer, so the emitted image must be mirrored left-right. Flip ndc.x.
-      float projAxisDist=length(uProjPos[a].xz);
+      float projAxisDist=length(uCalPos[a].xz);
       bool rear = projAxisDist > uScreenRadius;
       if(rear) ndc.x = -ndc.x;
-      float tanH=tan(d2r(uProjHFovDeg[a])*0.5);
-      float tanV=tanH/uProjAspect[a];
+      float tanH=tan(d2r(uCalHFovDeg[a])*0.5);
+      float tanV=tanH/uCalAspect[a];
       vec3 rayLocal=normalize(vec3(ndc.x*tanH, ndc.y*tanV, 1.0));
-      mat3 R=rotYPR(d2r(uProjRotDeg[a]));
+      mat3 R=rotYPR(d2r(uCalRotDeg[a]));
       vec3 rayWorld=normalize(R*rayLocal);
-      float t=intersectCylinderY(uProjPos[a], rayWorld, uScreenRadius);
+      float t=intersectCylinderY(uCalPos[a], rayWorld, uScreenRadius);
       if(t<0.0){ fragColor=vec4(0.0,0.0,0.0,1.0); return; }
-      vec3 S=uProjPos[a]+t*rayWorld;
+      vec3 S=uCalPos[a]+t*rayWorld;
+      if(!inBounds(S)){ fragColor=vec4(0.02,0.02,0.03,1.0); return; }
+      vec2 srcUV=eyeUV(S);
+      vec3 col=gameFrame(srcUV);
+      addGrid(col, srcUV);
+      fragColor=vec4(col,1.0);
+    } else if(uMode>1.5){
+      // ---- EMIT (pass 1): warp for uEmitProj at its CALIBRATION pose, written to
+      // a panel-indexed texture. The eye composite samples it through the ACTUAL
+      // pose, so the two passes are not each other's inverse and a mis-calibration
+      // shows as a displaced/distorted image.
+      int a=uEmitProj;
+      vec2 ndc=vUv*2.0-1.0; ndc.y=-ndc.y;   // full panel, no pane fit
+      float projAxisDist=length(uCalPos[a].xz);
+      bool rear = projAxisDist > uScreenRadius;
+      if(rear) ndc.x = -ndc.x;
+      float tanH=tan(d2r(uCalHFovDeg[a])*0.5);
+      float tanV=tanH/uCalAspect[a];
+      vec3 rayLocal=normalize(vec3(ndc.x*tanH, ndc.y*tanV, 1.0));
+      mat3 R=rotYPR(d2r(uCalRotDeg[a]));
+      vec3 rayWorld=normalize(R*rayLocal);
+      float t=intersectCylinderY(uCalPos[a], rayWorld, uScreenRadius);
+      if(t<0.0){ fragColor=vec4(0.0,0.0,0.0,1.0); return; }
+      vec3 S=uCalPos[a]+t*rayWorld;
       if(!inBounds(S)){ fragColor=vec4(0.02,0.02,0.03,1.0); return; }
       vec2 srcUV=eyeUV(S);
       vec3 col=gameFrame(srcUV);
       addGrid(col, srcUV);
       fragColor=vec4(col,1.0);
     } else {
-      // ---- EYE COMPOSITE: eye pixel -> ray -> screen point S -> sum the light
-      // every covering projector deposits at S (spec/03-geometry.md). Alpha ramps
-      // form a partition of unity; photometrics include black-level lift. This is a
-      // single-pass idealisation: each projector is assumed to place the ideal source
-      // at S, so geometric mis-aim is not shown here (that needs the two-pass eye view
-      // in spec/07-roadmap.md). Photometric mismatches and ramp seams are shown.
+      // ---- EYE COMPOSITE (pass 2): eye pixel -> ray -> screen point S -> sum what
+      // each covering projector actually emitted at S. Coverage uses the ACTUAL
+      // pose; the emitted image is sampled from pass 1 (calibration pose). Alpha
+      // ramps form a partition of unity; photometrics include black-level lift.
       vec2 ndc=vUv*2.0-1.0; ndc.y=-ndc.y;
       // The eye has no frame or aspect — it just looks at the screen. Its field of
       // view is a fixed property of the viewer: it must NOT change with the signal
@@ -635,22 +744,25 @@ out vec4 fragColor;
       if(t<0.0){ fragColor=vec4(0.0,0.0,0.0,1.0); return; }
       vec3 S=uEyePos+t*rayLocal;
       if(!inBounds(S)){ fragColor=vec4(0.02,0.02,0.03,1.0); return; }
-      // The ideal source the game camera would show at S.
+      // When the warp matches the projector (the normal case), every projector places
+      // the ideal source at S, so sample the game directly — sharp, no intermediate
+      // texture. Only when a calibration pose differs do we sample the emitted images.
       vec2 srcUV=eyeUV(S);
       vec3 src=gameFrame(srcUV);
       addGrid(src, srcUV);
-      // Sum each covering projector's contribution, then normalise the weights so
+      // Sum each covering projector's emitted light, then normalise the weights so
       // the alpha ramps form a partition of unity.
       vec3 sum=vec3(0.0);
       float wsum=0.0;
       for(int j=0;j<MAXP;j++){
         if(j>=uProjCount) break;
         vec2 pndc;
-        if(!projPanelLit(j, S, pndc)) continue;
+        if(!projPanelLit(j, S, pndc)) continue;   // coverage via the actual pose
         float w=blendWeight(j, pndc);
         if(w<=0.0) continue;
+        vec3 sig=(uEyeDirect>0.5) ? src : emitSample(j, pndc);
         wsum += w;
-        sum += w*photoLinear(j, src);
+        sum += w*photoLinear(j, sig);
       }
       if(wsum<=0.0001){ fragColor=vec4(0.0,0.0,0.0,1.0); return; }
       fragColor=vec4(linearToSrgb(sum/wsum),1.0);
@@ -771,11 +883,33 @@ function makeQuadRenderer(canvas, mode){
     uBlend:{value:Array.from({length:MAX_PROJECTORS},()=>new THREE.Vector4())},
     uPhoto:{value:Array.from({length:MAX_PROJECTORS},()=>new THREE.Vector3())},
     uBlackLift:{value:0.0},
+    uCalPos:{value:Array.from({length:MAX_PROJECTORS},()=>new THREE.Vector3())},
+    uCalRotDeg:{value:Array.from({length:MAX_PROJECTORS},()=>new THREE.Vector3())},
+    uCalHFovDeg:{value:new Float32Array(MAX_PROJECTORS)},
+    uCalAspect:{value:new Float32Array(MAX_PROJECTORS)},
+    uEmitProj:{value:0},
+    uEmit0:{value:null}, uEmit1:{value:null}, uEmit2:{value:null}, uEmit3:{value:null},
+    uEyeDirect:{value:1.0},
     uGridLines:{value:P.gridLines},
     uPaneAspect:{value:1.0},
     uShowGrid:{value:P.showGrid}, uMode:{value:mode},
     uGameTex:{value:null}, uUseTex:{value:0.0}, uTexAspect:{value:1.777},
   };
+  // Per-projector emitted-image textures (eye renderer only). Pass 1 renders each
+  // projector's warp at its calibration pose into one of these.
+  const EMIT_SIZE=768;
+  const emitRTs = (mode>0.5)
+    ? [0,1,2,3].map(()=>{
+        const rt=new THREE.WebGLRenderTarget(EMIT_SIZE,EMIT_SIZE,
+          {depthBuffer:false, stencilBuffer:false});
+        if(THREE.NoColorSpace!==undefined) rt.texture.colorSpace=THREE.NoColorSpace;
+        rt.texture.minFilter=THREE.LinearFilter;
+        rt.texture.magFilter=THREE.LinearFilter;
+        rt.texture.wrapS=THREE.ClampToEdgeWrapping;
+        rt.texture.wrapT=THREE.ClampToEdgeWrapping;
+        return rt;
+      })
+    : null;
   const mat=new THREE.RawShaderMaterial({vertexShader:VERT, fragmentShader:WARP_GLSL, uniforms,
     glslVersion: THREE.GLSL3});
   const quad=new THREE.Mesh(new THREE.PlaneGeometry(2,2), mat);
@@ -786,6 +920,39 @@ function makeQuadRenderer(canvas, mode){
       const w=canvas.clientWidth, h=canvas.clientHeight;
       if(canvas.width!==w||canvas.height!==h) renderer.setSize(w,h,false);
       uniforms.uPaneAspect.value = h>0 ? w/h : 1.0;
+      if(mode>0.5 && uniforms.uEyeDirect.value<0.5){
+        // Pass 1: render each projector's warp (calibration pose) into its texture.
+        // Skipped entirely when the warp matches the projector (uEyeDirect), where the
+        // composite samples the game directly and no intermediate texture is needed.
+        // The screen occupies only part of the panel, so the eye view magnifies the
+        // emitted texture's useful region; supersample it (2x the pane, capped) to
+        // keep pass 2 from going soft.
+        const cap=2048, ss=2;
+        const ew=Math.max(2, Math.min(cap, w*ss)), eh=Math.max(2, Math.min(cap, h*ss));
+        for(const rt of emitRTs){
+          if(rt.width!==ew || rt.height!==eh) rt.setSize(ew,eh);
+        }
+        // Unbind the emitted textures first: three.js binds every active sampler, so
+        // rendering into emitRTs[j] while it is still bound as uEmitj forms a
+        // framebuffer/texture feedback loop (WebGL rejects the draw) even though the
+        // emit pass does not sample it.
+        uniforms.uMode.value=2.0;
+        uniforms.uEmit0.value=null; uniforms.uEmit1.value=null;
+        uniforms.uEmit2.value=null; uniforms.uEmit3.value=null;
+        const n=Math.min(P.projectors.length, MAX_PROJECTORS);
+        for(let j=0;j<n;j++){
+          uniforms.uEmitProj.value=j;
+          renderer.setRenderTarget(emitRTs[j]);
+          renderer.render(scene,cam);
+        }
+        renderer.setRenderTarget(null);
+        // Rebind for pass 2 (the composite samples them).
+        uniforms.uEmit0.value=emitRTs[0].texture;
+        uniforms.uEmit1.value=emitRTs[1].texture;
+        uniforms.uEmit2.value=emitRTs[2].texture;
+        uniforms.uEmit3.value=emitRTs[3].texture;
+        uniforms.uMode.value=1.0;
+      }
       renderer.render(scene,cam);
     },
     sync(){
@@ -801,10 +968,12 @@ function makeQuadRenderer(canvas, mode){
       // Assign fresh arrays each sync: three.js compares array uniforms by element
       // reference, so mutating the existing Vector3/Float32Array in place would be
       // treated as unchanged and skipped.
-      const pos=[], rot=[], blend=[], photo=[];
+      const pos=[], rot=[], blend=[], photo=[], calPos=[], calRot=[];
       const hfov=new Float32Array(MAX_PROJECTORS);
       const asp=new Float32Array(MAX_PROJECTORS);
       const en=new Float32Array(MAX_PROJECTORS);
+      const calHfov=new Float32Array(MAX_PROJECTORS);
+      const calAsp=new Float32Array(MAX_PROJECTORS);
       for(let j=0;j<MAX_PROJECTORS;j++){
         const pr=P.projectors[j];
         if(pr){
@@ -815,12 +984,19 @@ function makeQuadRenderer(canvas, mode){
           en[j]=pr.enabled;
           blend.push(new THREE.Vector4(pr.blendLeft,pr.blendRight,pr.blendTop,pr.blendBottom));
           photo.push(new THREE.Vector3(pr.blackLevel,pr.gamma,pr.gain));
+          const cal=pr.cal;
+          calPos.push(new THREE.Vector3(cal.x,cal.y,cal.z));
+          calRot.push(new THREE.Vector3(cal.yaw,cal.pitch,cal.roll));
+          calHfov[j]=cal.hFov; calAsp[j]=cal.aspect;
         } else {
           pos.push(new THREE.Vector3(0,0,0));
           rot.push(new THREE.Vector3(0,0,0));
           hfov[j]=1.0; asp[j]=1.0; en[j]=0.0;
           blend.push(new THREE.Vector4(0,0,0,0));
           photo.push(new THREE.Vector3(0,1,1));
+          calPos.push(new THREE.Vector3(0,0,0));
+          calRot.push(new THREE.Vector3(0,0,0));
+          calHfov[j]=1.0; calAsp[j]=1.0;
         }
       }
       uniforms.uProjPos.value=pos;
@@ -830,6 +1006,17 @@ function makeQuadRenderer(canvas, mode){
       uniforms.uProjEnable.value=en;
       uniforms.uBlend.value=blend;
       uniforms.uPhoto.value=photo;
+      uniforms.uCalPos.value=calPos;
+      uniforms.uCalRotDeg.value=calRot;
+      uniforms.uCalHFovDeg.value=calHfov;
+      uniforms.uCalAspect.value=calAsp;
+      if(emitRTs){
+        uniforms.uEmit0.value=emitRTs[0].texture;
+        uniforms.uEmit1.value=emitRTs[1].texture;
+        uniforms.uEmit2.value=emitRTs[2].texture;
+        uniforms.uEmit3.value=emitRTs[3].texture;
+      }
+      uniforms.uEyeDirect.value=eyeDirectEnabled()?1.0:0.0;
       uniforms.uBlackLift.value=blackLift;
       uniforms.uGridLines.value=P.gridLines;
       uniforms.uShowGrid.value=P.showGrid;
@@ -851,7 +1038,12 @@ function loadGameImage(path){
     return;
   }
   _texLoader.load(path, (tex)=>{
-    tex.colorSpace=THREE.SRGBColorSpace;
+    // Sample raw sRGB bytes: the shader treats the sampled value as the game's
+    // sRGB-encoded signal and applies the projector gamma itself (photoLinear). If
+    // this were SRGBColorSpace, WebGL2 would upload SRGB8_ALPHA8 and decode to linear
+    // on sample, so the shader would apply gamma to already-linear values and the
+    // image would come out dark.
+    tex.colorSpace=THREE.NoColorSpace;
     tex.minFilter=THREE.LinearFilter;   // non power-of-two images
     tex.magFilter=THREE.LinearFilter;
     tex.wrapS=tex.wrapT=THREE.ClampToEdgeWrapping;
@@ -922,6 +1114,17 @@ projConeGeo.translate(0,0,-0.08);         // put tip at the lens origin, body be
 const PROJ_COLORS=[0xf0883e,0x58a6ff,0xf778ba,0xd29922];
 const projGroup=new THREE.Group(); scene3.add(projGroup);
 
+// Forward direction from a manual yaw/pitch, matching WARP_GLSL rotYPR on +Z.
+function projForwardFrom(yawDeg,pitchDeg){
+  const yaw=THREE.MathUtils.degToRad(yawDeg);
+  const pitch=THREE.MathUtils.degToRad(pitchDeg);
+  // The shader's column-major Rp gives Rp*(0,0,1) = (0, sp, cp); Ry then yaws it.
+  const cp=Math.cos(pitch), sp=Math.sin(pitch);
+  const v=new THREE.Vector3(0,sp,cp);
+  const cy=Math.cos(yaw), sy=Math.sin(yaw);
+  return new THREE.Vector3(cy*v.x+sy*v.z, v.y, -sy*v.x+cy*v.z).normalize();
+}
+
 // Build a projector's world-space forward direction from its pose.
 // In auto-aim mode this points at the screen center; otherwise it's derived
 // from yaw/pitch the same way the shader does (Ry*Rp applied to local +Z).
@@ -932,16 +1135,7 @@ function projForwardFor(pr){
     return new THREE.Vector3(0, P.screenBase + P.screenHeight*0.5, P.screenRadius)
       .sub(new THREE.Vector3(pr.projX,pr.projY,pr.projZ)).normalize();
   }
-  const yaw=THREE.MathUtils.degToRad(pr.projYaw);
-  const pitch=THREE.MathUtils.degToRad(pr.projPitch);
-  // Match WARP_GLSL rotYPR acting on local +Z; roll does not change forward.
-  // The shader's column-major Rp gives Rp*(0,0,1) = (0, sp, cp); Ry then yaws it.
-  const cp=Math.cos(pitch), sp=Math.sin(pitch);
-  let v=new THREE.Vector3(0,sp,cp);
-  // Ry = [[cy,0,sy],[0,1,0],[-sy,0,cy]] ; apply to v
-  const cy=Math.cos(yaw), sy=Math.sin(yaw);
-  v=new THREE.Vector3(cy*v.x+sy*v.z, v.y, -sy*v.x+cy*v.z);
-  return v.normalize();
+  return projForwardFrom(pr.projYaw, pr.projPitch);
 }
 
 // Build a robust quaternion rotating local +Z onto `dir`.
@@ -964,6 +1158,26 @@ function orientZ(mesh, dir){
   mesh.setRotationFromQuaternion(quatForward(dir));
 }
 
+// Frustum line geometry from a pose, shared by the actual and ghost calibration
+// markers.
+function frustumGeometry(pos, dir, hFovDeg, aspect){
+  const tanH=Math.tan(THREE.MathUtils.degToRad(hFovDeg)*0.5);
+  const tanV=tanH/aspect;
+  const L=P.screenRadius*2.2;
+  const corners=[
+    new THREE.Vector3( tanH, tanV,1).multiplyScalar(L),
+    new THREE.Vector3(-tanH, tanV,1).multiplyScalar(L),
+    new THREE.Vector3(-tanH,-tanV,1).multiplyScalar(L),
+    new THREE.Vector3( tanH,-tanV,1).multiplyScalar(L),
+  ];
+  const q=quatForward(dir);
+  const pts=[];
+  for(const c of corners){ pts.push(pos.clone()); pts.push(c.clone().applyQuaternion(q).add(pos)); }
+  const fc=corners.map(c=>c.clone().applyQuaternion(q).add(pos));
+  for(let k=0;k<4;k++){ pts.push(fc[k]); pts.push(fc[(k+1)%4]); }
+  return new THREE.BufferGeometry().setFromPoints(pts);
+}
+
 // Rebuild every projector's marker + frustum. N is small (<= MAX_PROJECTORS), so a
 // full rebuild per parameter edit is fine. The cone geometry is shared, so it is
 // never disposed; per-projector line geometries and materials are.
@@ -984,26 +1198,27 @@ function rebuildProjectors3D(){
     orientZ(cone, projForwardFor(pr));   // cone local +Z -> forward direction
     projGroup.add(cone);
     if(pr.enabled<0.5) return;           // disabled projector: no frustum
-    const tanH=Math.tan(THREE.MathUtils.degToRad(pr.projHFovDeg)*0.5);
-    const tanV=tanH/pr.projAspect;
-    const L=P.screenRadius*2.2;
-    const corners=[
-      new THREE.Vector3( tanH, tanV,1).multiplyScalar(L),
-      new THREE.Vector3(-tanH, tanV,1).multiplyScalar(L),
-      new THREE.Vector3(-tanH,-tanV,1).multiplyScalar(L),
-      new THREE.Vector3( tanH,-tanV,1).multiplyScalar(L),
-    ];
-    // Rotate local +Z to the projector forward direction (robust quaternion).
-    const q=quatForward(projForwardFor(pr));
-    const pos=new THREE.Vector3(pr.projX,pr.projY,pr.projZ);
-    const pts=[];
-    for(const c of corners){ pts.push(pos.clone()); pts.push(c.clone().applyQuaternion(q).add(pos)); }
-    // rectangle at far end
-    const fc=corners.map(c=>c.clone().applyQuaternion(q).add(pos));
-    for(let k=0;k<4;k++){ pts.push(fc[k]); pts.push(fc[(k+1)%4]); }
-    const g=new THREE.BufferGeometry().setFromPoints(pts);
+    const g=frustumGeometry(new THREE.Vector3(pr.projX,pr.projY,pr.projZ),
+                            projForwardFor(pr), pr.projHFovDeg, pr.projAspect);
     projGroup.add(new THREE.LineSegments(g,new THREE.LineBasicMaterial({color})));
   });
+  // When the warp is frozen, draw the calibration pose as a ghost so the
+  // divergence from the actual projector is visible.
+  if(P.warpFollows<0.5){
+    P.projectors.forEach((pr,i)=>{
+      const cal=pr.cal;
+      const color=PROJ_COLORS[i%PROJ_COLORS.length];
+      const dir=projForwardFrom(cal.yaw,cal.pitch);
+      const pos=new THREE.Vector3(cal.x,cal.y,cal.z);
+      const ghost=new THREE.Mesh(projConeGeo,
+        new THREE.MeshBasicMaterial({color, transparent:true, opacity:0.25}));
+      ghost.position.copy(pos); orientZ(ghost,dir);
+      projGroup.add(ghost);
+      const g=frustumGeometry(pos, dir, cal.hFov, cal.aspect);
+      projGroup.add(new THREE.LineSegments(g,
+        new THREE.LineBasicMaterial({color, transparent:true, opacity:0.35})));
+    });
+  }
 }
 rebuildProjectors3D();
 
@@ -1019,7 +1234,8 @@ function update3D(){
 let needScreenRebuild=false;
 let last={arc:P.screenArcDeg, r:P.screenRadius, h:P.screenHeight, b:P.screenBase};
 function updateAll(){
-  applyAutoAimAll();  // recompute every projector's aim from position before syncing views
+  applyAutoAimAll();   // recompute every projector's aim from position before syncing views
+  syncCalibration();   // keep the warp pose in step unless it is frozen
   if(P.screenArcDeg!==last.arc||P.screenRadius!==last.r||P.screenHeight!==last.h||P.screenBase!==last.b){
     needScreenRebuild=true; last.arc=P.screenArcDeg; last.r=P.screenRadius; last.h=P.screenHeight; last.b=P.screenBase;
   }

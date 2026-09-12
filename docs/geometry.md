@@ -188,6 +188,14 @@ deepest-overlap value so black stays uniform. Ramping happens in linear light (d
 sRGB, blend, re-encode). This is the only genuinely new math over the single-projector
 case.
 
+The simulator's Eye View validates this with a **two-pass** render: each projector's warp
+is drawn to a panel texture at its calibration pose, then the eye composites by sampling
+those textures through each projector's actual pose. A single projector is always
+perfectly calibrated relative to itself, so a mis-calibration only appears when the pose
+the warp was computed for differs from the projector's actual pose — hence the
+calibration/actual split. The two passes must not be each other's inverse, or they cancel
+and the eye recovers the ideal image regardless.
+
 ## Known simplifications (Phase 1)
 
 - **Game FOV assumed rectilinear.** Its vertical extent follows `SourceAspect`,

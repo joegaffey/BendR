@@ -48,7 +48,14 @@ Repository: local git only, branch `main`, no remote configured.
   (add/remove/enable, up to 4), per-projector pose/intrinsics/blend/photometrics, a
   composite Eye View summing every covering projector with normalised alpha ramps and
   black-level lift, and per-projector markers/frusta in the 3D scene. See
-  `04-web-simulator.md` "Multi-projector". The standalone app port remains (next step 5).
+  `04-web-simulator.md` "Multi-projector". The standalone app port remains (next step 4).
+- **Two-pass Eye View with a calibration/actual pose split** (FR-25): each projector's
+  warp is rendered to a panel-indexed texture at its calibration pose (pass 1), then the
+  eye composites by sampling those textures through each projector's actual pose (pass 2).
+  Freezing the warp ("Warp follows projector" off) makes a moved projector show the
+  stale image landing wrongly, so the Eye View now detects geometric mis-calibration. A
+  panel-space two-pass alone cancels (pass 2 is the inverse of pass 1); the pose split is
+  what makes it work. The `kEyeRefAspect` viewer stand-in remains — see Deferred.
 
 ### Removed
 
@@ -66,66 +73,33 @@ not) is deliberately **deferred** in favour of multi-projector work, which is th
 capability Phase 2 exists to deliver.
 
 Multi-projector and edge blending are now implemented in the web simulator (see
-"Completed"); porting the proven math to the standalone app is part of next step 5.
+"Completed"); porting the proven math to the standalone app is part of next step 4.
 
-### 1. Rigorous two-pass eye view
-
-Resolves the FR-25 limitation: the current eye view is single-pass analytic — it samples
-the game directly via the eye's view of each screen point, so it ALWAYS shows the ideal
-warp and cannot show mis-calibration as distortion. That undercuts its value as a
-correctness check, and is also the prerequisite for a viewer-perspective render.
-
-**Failed first attempt (do not repeat).** A two-pass version was tried where pass 1
-painted the projector output into a **panel-space** texture (indexed by projector panel
-NDC) and pass 2 had the eye sample it via `projPanelLit` (the inverse projector
-projection). This does not work: pass 2 is the exact inverse of pass 1, so the two
-cancel and the eye recovers the ideal image regardless of projector pose or panel aspect.
-Symptoms observed: panel aspect had no visible effect except at the clip boundary (which
-was off-screen), and moving the projector only made the lit region jump rather than
-distorting the image. The lesson: **the two passes must not be each other's inverse.**
-
-**Correct approach.** Pass 1 must render into a texture parameterised by **screen-surface
-coordinates** (arc angle × height) — "what light landed on each patch of the physical
-screen" — using the projector's *actual* pose. Pass 2's eye ray hits screen point S,
-converts S to those same surface coordinates, and reads the texture, using only true
-geometry (no projector model). Then a mis-aimed projector deposits the image on the wrong
-screen patches and the eye sees it displaced/distorted; panel bars land at true screen
-positions. The projector model is used only in pass 1, the eye only in pass 2 — no
-cancellation.
-
-Also in scope:
-- Show the **panel's bars/clipping** at their true screen positions.
-- Replace the current `kEyeRefAspect` stand-in with a proper perspective camera, so the
-  eye has a real, framing-independent field of view.
-
-Build alongside FR-31 (projected image on the screen in the 3D view), which needs the
-same render-to-texture foundation.
-
-### 2. Control-point mesh layer
+### 1. Control-point mesh layer
 
 Implements FR-16 and FR-17. The analytic solve assumes an ideal cylinder and pinhole
 projector (C-5); the mesh layer absorbs real-world deviation. Best built in the web
 simulator first, where a click canvas exists, then ported. ReShade cannot host this
 usefully.
 
-### 3. Test the ReShade shader on hardware
+### 2. Test the ReShade shader on hardware
 
 First **sync `reshade/BendR.fx` to the current web math**: the projector/source aspect
 split, the floor model + `ScreenBase` bounds, and aspect-square grid cells all landed
 in the simulator after the shader was last touched. Then run on hardware to close the
 "written but unverified" gap. Expect sign and handedness issues on first run.
 
-### 4. Semi-spherical screens
+### 3. Semi-spherical screens
 
 Implements FR-3. Swap the cylinder intersection for a sphere; the rest of the derivation
 is unchanged.
 
-### 5. Standalone app
+### 4. Standalone app
 
 Per the milestones in `06-standalone-app.md`. Milestone 4 supersedes the ReShade shader
 for single-projector use; milestone 5 delivers multi-projector blending.
 
-### 6. Head-shadow indicator
+### 5. Head-shadow indicator
 
 Implements FR-27. Draw the beam's lower edge and flag intersection with a head volume at
 the eye-point. The overhead default is shadow-conscious but unverified for tall screens
@@ -137,6 +111,11 @@ shows occlusion directly rather than inferring it. See `08-backlog.md`.
 
 ## Deferred
 
+- **Perspective eye camera.** The Eye View still anchors its FOV on a fixed
+  `kEyeRefAspect` reference and widens horizontally to fill the pane. A real viewer has a
+  framing-independent field of view; replacing the stand-in with a proper perspective
+  camera would make the Eye View a true viewer-perspective render. Not required for the
+  correctness check, which works with the stand-in.
 - **Parity test across implementations.** Fixed input parameters with expected output
   UVs, evaluated against each implementation, to catch silent divergence between the
   shader copies. Cheap, and the mechanism that makes multiple shader dialects safe —
