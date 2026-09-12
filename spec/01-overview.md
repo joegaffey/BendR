@@ -5,10 +5,9 @@
 BendR (**Bend Reality**) is free, geometry-driven mesh warping and edge blending for
 curved and semi-spherical projection screens, aimed at flight/racing simulator rigs.
 
-Commercial screen-warping software (Vioso, Scalable Display, Fly Elise-ng) is priced
-for install-grade AV work. The underlying correction is a well-understood ray-trace,
-and on a fixed sim rig the warp is essentially static once calibrated. BendR provides
-that correction directly.
+Commercial screen-warping software is priced for install-grade AV work. The underlying
+correction is a well-understood ray-trace, and on a fixed sim rig the warp is essentially
+static once calibrated. BendR provides that correction directly.
 
 ## Scope
 

@@ -13,10 +13,10 @@ Tune projector pose, screen geometry, and eye-point in the browser — no instal
 > the standalone multi-projector app is not started. Parameters, file formats, and
 > interfaces may still change.
 
-BendR exists because commercial screen-warping software (Vioso, Scalable Display,
-Fly Elise-ng, etc.) is expensive — while the underlying math is a well-understood
-ray-trace. For a fixed sim rig the warp is essentially static once calibrated, so
-there's little reason to pay recurring/high license fees.
+BendR exists because commercial screen-warping software is expensive — while the
+underlying math is a well-understood ray-trace. For a fixed sim rig the warp is
+essentially static once calibrated, so there's little reason to pay recurring/high
+license fees.
 
 ## Goals
 
