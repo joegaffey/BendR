@@ -127,6 +127,10 @@ shows occlusion directly rather than inferring it. See `08-backlog.md`.
   framing-independent field of view; replacing the stand-in with a proper perspective
   camera would make the Eye View a true viewer-perspective render. Not required for the
   correctness check, which works with the stand-in.
+- **Head/eye-tracked dynamic sweet spot.** Driving the warp's eye-point from a live head
+  or eye tracker so it follows the viewer. A research direction, not a committed feature;
+  the game-camera coupling and latency budget decide whether it is a real gain. See
+  `08-backlog.md`, "Future research".
 - **Parity test across implementations.** Fixed input parameters with expected output
   UVs, evaluated against each implementation, to catch silent divergence between the
   shader copies. Cheap, and the mechanism that makes multiple shader dialects safe —

@@ -131,6 +131,37 @@ the eye-view camera.
 Sequencing: implement after or alongside the two-pass eye view, since it shares the
 render-to-texture foundation.
 
+## Future research
+
+### Head/eye-tracked dynamic sweet spot
+
+**Idea.** Drive the warp's eye-point (the sweet spot, `03-geometry.md`) live from a 6-DoF
+head tracker (TrackIR/OpenTrack) or an eye-position estimate, instead of a fixed
+calibrated value, so the warp stays correct as the viewer's head moves. This is
+head-tracked off-axis projection (the fish-tank/CAVE effect); it keeps the single
+viewpoint of C-4 but makes that viewpoint dynamic.
+
+**Why it is not a simple win.** The warp assumes the source image is a rectilinear render
+from the sweet spot, so it interacts with the content's own camera:
+
+- Game camera fixed, BendR sweet spot moves — the screen becomes a world-anchored window
+  (works with capture, but usually wrong for a cockpit sim).
+- Game already head-tracks — BendR must keep its warp at the nominal eye, or the head
+  motion is double-counted and the image skews.
+- Both track in sync — needs camera control, which capture and ReShade cannot provide.
+
+**Other constraints.** The sweet spot is a *position*, so gaze-only eye tracking is
+insufficient; motion-to-photon latency becomes directly visible (webcam tracking is
+likely too slow, dedicated trackers plausible); and every output must use the same
+per-frame eye sample. Blending, black-level lift, and the FR-16 mesh layer are
+viewpoint-independent and unaffected.
+
+**Where it would live.** The render path already takes the eye as a uniform
+(`web/index.html`), so a web-simulator prototype is cheap; a real implementation belongs
+in the standalone app (`06-standalone-app.md`), with the persisted config eye as the base
+and tracking applied as a runtime-only offset. Would need a new FR, a motion-to-photon
+latency NFR, and a "tracking input" section.
+
 ## Suggested order
 
 D-1 and D-2 are done, and the aspect-split half of D-3 is done alongside D-2 (they shared
