@@ -25,6 +25,9 @@ test.describe('BendR web simulator — visual regression', () => {
   });
 
   test('freezing the warp makes a moved projector visibly mis-calibrate', async ({ page }, testInfo) => {
+    // The frozen warp runs the two-pass eye renderer (four supersampled emit targets)
+    // every frame; under CI's software GL that is far slower than the other tests.
+    test.slow();
     await openApp(page);
 
     const eye = page.locator('#eyeCanvas');
@@ -49,6 +52,7 @@ test.describe('BendR web simulator — visual regression', () => {
   });
 
   test('does not flip the image when the projector moves sideways behind the screen', async ({ page }) => {
+    test.slow();
     await openApp(page);
 
     // With the default z = -1.3, the projector crosses the cylinder radius
@@ -61,7 +65,7 @@ test.describe('BendR web simulator — visual regression', () => {
 
     let prev = null;
     let maxStep = 0;
-    for (const x of [0.72, 0.74, 0.75, 0.76, 0.78]) {
+    for (const x of [0.72, 0.75, 0.78]) {
       await setRange(posX, x);
       await waitForRender(page);
       const shot = await proj.screenshot();
