@@ -45,15 +45,19 @@
   .proj-del { background:none; border:none; color:#8b949e; cursor:pointer; padding:1px 3px;
               border-radius:4px; line-height:0; display:flex; align-items:center; }
   .proj-del:hover { color:#f85149; background:rgba(248,81,73,.14); }
+  .proj-launch { background:none; border:none; color:#8b949e; cursor:pointer; padding:1px 3px;
+                 border-radius:4px; line-height:0; display:flex; align-items:center; }
+  .proj-launch:hover { color:var(--accent); background:rgba(63,185,80,.14); }
+  .proj-launch.open { color:var(--accent); }
   .proj-row-opts { display:flex; gap:12px; margin-top:4px; padding-left:17px; }
   .mini { display:flex; align-items:center; gap:4px; font-size:11px; color:#8b949e;
           cursor:pointer; }
   /* Native controls: buttons, selects, sliders, checkboxes. */
-  #controls button:not(.proj-name):not(.proj-del) {
+  #controls button:not(.proj-name):not(.proj-del):not(.proj-launch) {
     background:#21262d; color:var(--text); border:1px solid var(--line);
     border-radius:6px; padding:5px 10px; font:inherit; font-size:12px; cursor:pointer; }
-  #controls button:not(.proj-name):not(.proj-del):hover { background:#30363d; border-color:#8b949e; }
-  #controls button:not(.proj-name):not(.proj-del):active { background:#3a424c; }
+  #controls button:not(.proj-name):not(.proj-del):not(.proj-launch):hover { background:#30363d; border-color:#8b949e; }
+  #controls button:not(.proj-name):not(.proj-del):not(.proj-launch):active { background:#3a424c; }
   #controls select {
     background:#21262d; color:var(--text); border:1px solid var(--line);
     border-radius:6px; padding:4px 8px; font:inherit; font-size:12px; cursor:pointer; }
@@ -540,7 +544,15 @@ function refreshProjectorList(){
       '<path d="M10 11v6M14 11v6"/>'+
       '<path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
     x.addEventListener('click',()=>deleteProjector(i));
-    top.appendChild(dot); top.appendChild(name); top.appendChild(x);
+    const launch=document.createElement('button'); launch.className='proj-launch';
+    if(outputWindows[i] && !outputWindows[i].closed) launch.classList.add('open');
+    launch.title='Launch this projector output';
+    launch.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" '+
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+
+      '<rect x="2" y="3" width="20" height="14" rx="2"/>'+
+      '<line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>';
+    launch.addEventListener('click',()=>{ launchOutput(i); refreshProjectorList(); });
+    top.appendChild(dot); top.appendChild(name); top.appendChild(launch); top.appendChild(x);
 
     const opts=document.createElement('div'); opts.className='proj-row-opts';
     opts.appendChild(miniCheck('Composite', pr.enabled>=0.5,
@@ -1507,21 +1519,30 @@ updateAll();
 // Runtime output: launch windows and postMessage sync (spec/09-runtime.md)
 // ------------------------------------------------------------------
 
-// Open (or focus) one output window per enabled projector, then push the config.
-function launchOutputs(){
+// Open (or focus) the output window for one projector, then push the config.
+function launchOutput(i){
+  const pr=P.projectors[i];
+  if(!pr) return;
   const cfg=b64encode(JSON.stringify(serializeConfig()));
-  P.projectors.forEach((pr,i)=>{
-    if(pr.enabled<0.5) return;
-    let w=outputWindows[i];
-    if(!w || w.closed){
-      w=window.open(location.pathname+'#output='+i+'&cfg='+cfg, 'bendr-out-'+i);
-      if(!w){ console.warn('BendR: popup blocked for projector '+(i+1)); return; }
-      outputWindows[i]=w;
-    } else {
-      w.focus();
-    }
-    w.postMessage({type:'config', config:serializeConfig()}, location.origin);
-  });
+  let w=outputWindows[i];
+  if(!w || w.closed){
+    // Size the popup to the panel aspect so the output is not letterboxed by a
+    // mismatched window; the user then drags it to the projector and fullscreens.
+    const asp=pr.projAspect||1.777;
+    const width=1280, height=Math.max(360, Math.round(width/asp));
+    w=window.open(location.pathname+'#output='+i+'&cfg='+cfg, 'bendr-out-'+i,
+      'popup=yes,width='+width+',height='+height);
+    if(!w){ console.warn('BendR: popup blocked for projector '+(i+1)); return; }
+    outputWindows[i]=w;
+  } else {
+    w.focus();
+  }
+  w.postMessage({type:'config', config:serializeConfig()}, location.origin);
+}
+
+// Open (or focus) one output window per enabled projector.
+function launchOutputs(){
+  P.projectors.forEach((pr,i)=>{ if(pr.enabled>=0.5) launchOutput(i); });
 }
 
 // Push the current config to every open output window.
