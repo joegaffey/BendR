@@ -58,6 +58,7 @@ test.describe('BendR web simulator — smoke', () => {
   });
 
   test('aim X offset pans the auto-aim target', async ({ page, context }) => {
+    test.slow(); // several live-canvas screenshots; slow under software GL
     await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: ORIGIN });
     await openApp(page);
 
@@ -81,6 +82,25 @@ test.describe('BendR web simulator — smoke', () => {
     const expectedYaw = (Math.atan2(0.5 - pr.pose.x, cfg.screen.radius - pr.pose.z) * 180) / Math.PI;
     expect(pr.pose.yaw).toBeCloseTo(expectedYaw, 1);
     expect(Math.abs(pr.pose.yaw)).toBeGreaterThan(1); // sanity: it actually moved
+  });
+
+  test('beam fill and wireframe are independently toggleable', async ({ page }) => {
+    test.slow(); // several live-canvas screenshots; slow under software GL
+    await openApp(page);
+    const scene = page.locator('#scene');
+    const both = await scene.screenshot();
+
+    const fill = page.locator('label.mini:has-text("Fill") input');
+    const wire = page.locator('label.mini:has-text("Wireframe") input');
+
+    await wire.uncheck();
+    await waitForRender(page);
+    expect(diffRatio(both, await scene.screenshot())).toBeGreaterThan(0.002);
+
+    await wire.check();
+    await fill.uncheck();
+    await waitForRender(page);
+    expect(diffRatio(both, await scene.screenshot())).toBeGreaterThan(0.002);
   });
 
   test('loads a sim screenshot source without errors', async ({ page }) => {

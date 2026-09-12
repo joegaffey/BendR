@@ -38,7 +38,9 @@ direct port of `reshade/BendR.fx`, so validating here validates the shader.
 Orbit-controlled 3D view of the rig:
 
 - Cylindrical screen as a semi-transparent double-sided arc, centred on +Z.
-- Projector as an orange cone with its frustum drawn as line segments.
+- Projector as an orange cone with its beam drawn as an additive solid volume, a line
+  cage, or both. The active projector's beam is emphasised; the others are dimmed or
+  hidden (see "Show all beams").
 - Eye-point as a green sphere with a forward arrow along +Z.
 - Ground grid and axes helper for orientation.
 
@@ -115,6 +117,8 @@ Implemented. The simulator is the validation sandbox for the blend model in
 |---|---|---|
 | Projector list | add / remove / select | Each projector owns a full pose + intrinsics set; the panel edits the active one (up to 4) |
 | Enabled in composite | checkbox | Include or exclude a projector from the composite |
+| Show all beams | checkbox | Draw every projector's beam; off shows only the active projector's |
+| Fill / Wireframe | checkboxes | Beam style: additive solid volume, line cage, or both |
 | Blend L/R/T/B | sliders | Per-edge ramp widths as a fraction of the half-extent |
 | Black level / gamma / gain | sliders | Per-projector photometrics for black-level lift and gamma correction |
 | Eye View | pane | The composite: sums every covering projector's light at each screen point, ramps normalised to a partition of unity |
