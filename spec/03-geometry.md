@@ -123,6 +123,13 @@ Rroll  = [[ cr, -sr, 0], [ sr, cr,  0], [  0,  0,  1]]
 Note `Rpitch · (0,0,1) = (0, −sp, cp)`: positive pitch tilts the forward vector
 downward. Visual markers must match this or they will disagree with the warp.
 
+**Column-major trap.** The matrices above are written row-major. GLSL's `mat3(...)`
+takes its arguments **column-major**, so a direct transcription of the rows into a
+`mat3` constructor silently produces the transpose. A transposed `Ryaw` negates the
+horizontal aim, so auto-aim points the wrong way in X and the screen drifts out of the
+panel as the projector moves sideways. HLSL's `float3x3(...)` is row-major, so the same
+rows are correct there. Transpose (or reorder) the arguments when porting to GLSL.
+
 ### Step 4 — Intersect the cylinder, choosing the illuminated face
 
 Solve for the infinite vertical cylinder of radius `R` on the Y axis using XZ

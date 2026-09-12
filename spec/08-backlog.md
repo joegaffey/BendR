@@ -137,11 +137,10 @@ D-1 and D-2 are done, and the aspect-split half of D-3 is done alongside D-2 (th
 the same `projAspect` conflation). D-3's remaining framing/FOV half is **deferred** while
 multi-projector work is prioritised.
 
-1. **Multi-projector + edge blending (FR-9, FR-18, FR-19, FR-20)** — the normative model
-   is now specified in `03-geometry.md`, "Multi-projector and edge blending". Implement it
-   in the web simulator first (data-driven projectors array, composite view, per-projector
-   black/gain/gamma, mismatched-projector preset), then port to the app. This is the
-   capability Phase 2 exists to deliver.
+1. **Multi-projector + edge blending (FR-9, FR-18, FR-19, FR-20)** — normative model in
+   `03-geometry.md`, "Multi-projector and edge blending". Implemented in the web simulator
+   (data-driven projectors array, composite eye view, per-projector black/gain/gamma,
+   black-level lift). Remaining: port to the standalone app (see `07-roadmap.md` step 5).
 2. **FR-31 with the two-pass eye view** — shared render-to-texture foundation.
 3. **FR-30** — largest, and benefits from FR-31 already establishing projector-driven
    rendering in the 3D scene.

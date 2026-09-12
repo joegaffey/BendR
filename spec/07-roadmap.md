@@ -4,7 +4,7 @@
 
 | Component | State |
 |---|---|
-| `web/index.html` | Working. Shader compiles and renders; 3D scene, projector output, and eye view all functional. |
+| `web/index.html` | Working. Shader compiles and renders; 3D scene, per-projector output, and a multi-projector composite eye view all functional. |
 | `reshade/BendR.fx` | Written, never compiled or run on hardware. **Now behind the web simulator**: predates the projector/source aspect split, the floor model + `ScreenBase`, pane letter/pillarboxing, and aspect-square grid cells. Needs a sync pass before hardware testing. |
 | `docs/geometry.md` | Written, matches the web implementation (floor model, aspect split). |
 | `spec/` | This specification set. |
@@ -44,7 +44,11 @@ Repository: local git only, branch `main`, no remote configured.
 - **Normative multi-projector + edge-blending model** specified in `03-geometry.md`
   (FR-9, FR-18, FR-19, FR-20): independent projectors, additive linear-light composite,
   partition-of-unity alpha ramps, per-projector black/gain/gamma, and black-level lift.
-  No implementation yet — that is next step 1.
+- **Multi-projector + edge blending in the web simulator**: data-driven projectors array
+  (add/remove/enable, up to 4), per-projector pose/intrinsics/blend/photometrics, a
+  composite Eye View summing every covering projector with normalised alpha ramps and
+  black-level lift, and per-projector markers/frusta in the 3D scene. See
+  `04-web-simulator.md` "Multi-projector". The standalone app port remains (next step 5).
 
 ### Removed
 
@@ -61,19 +65,10 @@ coupling (the aspect split is done; centre-third framing of the triple-screen ca
 not) is deliberately **deferred** in favour of multi-projector work, which is the
 capability Phase 2 exists to deliver.
 
-### 1. Implement multi-projector and edge blending
+Multi-projector and edge blending are now implemented in the web simulator (see
+"Completed"); porting the proven math to the standalone app is part of next step 5.
 
-The normative model is now specified: `03-geometry.md`, "Multi-projector and edge
-blending" (FR-9, FR-18, FR-19, FR-20). It defines N independent projectors sharing the
-screen and eye-point, geometric coverage, an additive linear-light composite with
-partition-of-unity alpha ramps, per-projector black/gain/gamma, and black-level lift.
-
-Implement in the **web simulator first** — it is the validation sandbox, and it makes the
-single-projector state data-driven (a projectors array) before any native port. Then port
-the proven math to the standalone app. Validate against AC-8 and AC-9, including the
-mismatched-projector case that makes a seam appear until corrected.
-
-### 2. Rigorous two-pass eye view
+### 1. Rigorous two-pass eye view
 
 Resolves the FR-25 limitation: the current eye view is single-pass analytic — it samples
 the game directly via the eye's view of each screen point, so it ALWAYS shows the ideal
@@ -106,31 +101,31 @@ Also in scope:
 Build alongside FR-31 (projected image on the screen in the 3D view), which needs the
 same render-to-texture foundation.
 
-### 3. Control-point mesh layer
+### 2. Control-point mesh layer
 
 Implements FR-16 and FR-17. The analytic solve assumes an ideal cylinder and pinhole
 projector (C-5); the mesh layer absorbs real-world deviation. Best built in the web
 simulator first, where a click canvas exists, then ported. ReShade cannot host this
 usefully.
 
-### 4. Test the ReShade shader on hardware
+### 3. Test the ReShade shader on hardware
 
 First **sync `reshade/BendR.fx` to the current web math**: the projector/source aspect
 split, the floor model + `ScreenBase` bounds, and aspect-square grid cells all landed
 in the simulator after the shader was last touched. Then run on hardware to close the
 "written but unverified" gap. Expect sign and handedness issues on first run.
 
-### 5. Semi-spherical screens
+### 4. Semi-spherical screens
 
 Implements FR-3. Swap the cylinder intersection for a sphere; the rest of the derivation
 is unchanged.
 
-### 6. Standalone app
+### 5. Standalone app
 
 Per the milestones in `06-standalone-app.md`. Milestone 4 supersedes the ReShade shader
 for single-projector use; milestone 5 delivers multi-projector blending.
 
-### 7. Head-shadow indicator
+### 6. Head-shadow indicator
 
 Implements FR-27. Draw the beam's lower edge and flag intersection with a head volume at
 the eye-point. The overhead default is shadow-conscious but unverified for tall screens

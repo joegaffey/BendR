@@ -21,7 +21,7 @@ Requirement IDs are stable. Status values: **Done**, **Partial**, **Planned**.
 | FR-6 | Optionally auto-aim the projector at screen centre, derived from its position. | Done |
 | FR-7 | Optionally auto-fit projector FOV so the beam covers the whole screen. | Done |
 | FR-8 | Support rear projection (projector outside the screen radius) without a user-set mode. | Done |
-| FR-9 | Support multiple projectors. | Planned |
+| FR-9 | Support multiple projectors. | Partial |
 
 ### Viewer
 
@@ -49,14 +49,16 @@ which is not what happens and would invalidate the straightness check.
 
 | ID | Requirement | Status |
 |---|---|---|
-| FR-18 | Alpha-ramp blending across projector overlap regions. | Planned |
-| FR-19 | Black-level lift compensation in overlap regions. | Planned |
-| FR-20 | Gamma-correct blend ramps. | Planned |
+| FR-18 | Alpha-ramp blending across projector overlap regions. | Partial |
+| FR-19 | Black-level lift compensation in overlap regions. | Partial |
+| FR-20 | Gamma-correct blend ramps. | Partial |
 
 FR-18, FR-19, and FR-20 share one normative model — the additive linear-light composite,
 partition-of-unity alpha ramps, per-projector photometric parameters, and black-level
 lift specified in `03-geometry.md`, "Multi-projector and edge blending". Implementations
-must agree with it. FR-9 (multiple projectors) is the same section's coverage model.
+must agree with it. FR-9 (multiple projectors) is the same section's coverage model. All
+four are **Partial**: implemented in the web simulator (`04-web-simulator.md`), still
+pending in the standalone app.
 
 ### Calibration and feedback
 

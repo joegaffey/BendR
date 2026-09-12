@@ -92,23 +92,31 @@ Derived controls grey out while their automatic mode is active and display the c
 value, so the sliders remain a readable report of the current pose. Changing projector
 position or screen shape refreshes them.
 
-### Multi-projector (planned)
+### Multi-projector
 
-Not yet implemented. The simulator is the validation sandbox for the blend model in
-`03-geometry.md`, "Multi-projector and edge blending", so the eventual controls are:
+Implemented. The simulator is the validation sandbox for the blend model in
+`03-geometry.md`, "Multi-projector and edge blending".
 
 | Control | Type | Behaviour |
 |---|---|---|
-| Projector list | add / remove / select | Each projector owns a full pose + intrinsics set; the panel edits the selected one |
-| Enable | checkbox | Include or exclude a projector from the composite |
+| Projector list | add / remove / select | Each projector owns a full pose + intrinsics set; the panel edits the active one (up to 4) |
+| Enabled in composite | checkbox | Include or exclude a projector from the composite |
 | Blend L/R/T/B | sliders | Per-edge ramp widths as a fraction of the half-extent |
 | Black level / gamma / gain | sliders | Per-projector photometrics for black-level lift and gamma correction |
-| Composite view | pane | Renders the additive composite onto the screen; overlap and seam regions visible |
-| Mismatched projectors | preset | Sets differing gain/gamma/black so a seam appears, to demonstrate the correction |
+| Eye View | pane | The composite: sums every covering projector's light at each screen point, ramps normalised to a partition of unity |
 
-Each projector's warp is validated independently (AC-9); the composite validates the
-blend (AC-8). Per-projector photometrics are deliberately limited to black, gain, and
-gamma — colour/white-point matching is out of scope (`01-overview.md`).
+The **Projector Output** pane shows the active projector's warp, so each projector is
+validated independently (AC-9). The **Eye View** validates the blend (AC-8). Black-level
+lift is computed by sampling the screen geometry and applying the deepest-overlap floor.
+
+**Known limitation.** The composite is a single-pass idealisation: every covering
+projector is assumed to place the ideal source at each screen point, so a geometric
+mis-aim is not shown as distortion — only photometric mismatches and ramp seams are.
+Showing mis-calibration requires the two-pass eye view (FR-25, `07-roadmap.md`), which
+shares this composite's render-to-texture foundation.
+
+Per-projector photometrics are deliberately limited to black, gain, and gamma —
+colour/white-point matching is out of scope (`01-overview.md`).
 
 ## Source content
 
@@ -162,5 +170,7 @@ diagnose, as the engine's default message omits the specific error.
 
 Against the acceptance criteria in `02-requirements.md`: AC-1, AC-2, AC-3, AC-4, AC-5,
 AC-6 all apply to this component and are met, except that AC-1 verifies straightness
-only in the sense described under the FR-25 limitation above. AC-8 and AC-9 apply to the
-planned multi-projector work above and are not yet met.
+only in the sense described under the FR-25 limitation above. AC-8 and AC-9 are met by
+the multi-projector composite: each projector's warp is independently correct (AC-9), and
+the composite exposes photometric mismatches and ramp seams (AC-8). The FR-25 limitation
+still applies to geometric mis-calibration.

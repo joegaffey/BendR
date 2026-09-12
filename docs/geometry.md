@@ -194,9 +194,9 @@ case.
   which is independent of the projector panel aspect. Ultra-wide sim FOVs may want a
   per-axis game FOV; easy to add.
 - **Single eye-point** — correct for one head position (inherent to all such warps).
-- **Single projector in Phase 1** — the web simulator and ReShade shader warp one
-  output. The multi-projector composite above is Phase 2; its normative model is already
-  specified.
+- **Single projector in Phase 1** — the ReShade shader warps one output (C-6). The web
+  simulator now supports the multi-projector composite above; the standalone app is
+  Phase 2.
 - **Cylinder only** — semi-spherical mode swaps the Step-3 intersection for a sphere.
 
 ## Roadmap for this math
@@ -204,5 +204,6 @@ case.
 - [ ] Per-axis game FOV (independent H/V) for ultra-wide.
 - [ ] Sphere intersection for semi-spherical screens.
 - [ ] Bake the mapping into a warp-map texture (perf) instead of per-pixel solve.
-- [ ] Multi-projector: same solve per projector + overlap alpha ramp + black-level
-      (normative model now specified in `03-geometry.md`).
+- [x] Multi-projector: same solve per projector + overlap alpha ramp + black-level
+      (normative model in `03-geometry.md`; implemented in the web simulator, pending
+      the standalone app).
