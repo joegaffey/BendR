@@ -21,14 +21,56 @@
   #controls::-webkit-scrollbar-thumb:hover { background:#5b636d; }
   #controls h1 { font-size:15px; margin:0 0 2px; color:#fff; }
   #controls .sub { font-size:11px; color:#8b949e; margin-bottom:12px; }
-  .cat { font-size:11px; text-transform:uppercase; letter-spacing:.5px;
-         color:var(--accent); margin:14px 0 6px; border-bottom:1px solid var(--line);
-         padding-bottom:3px; }
+  .cat { font-size:12px; text-transform:uppercase; letter-spacing:.6px;
+         color:var(--accent); margin:8px 0 2px; border-bottom:1px solid var(--line);
+         padding:9px 0 7px; display:flex; align-items:center;
+         justify-content:space-between; cursor:pointer; user-select:none; }
+  .cat::after { content:'\25BE'; color:#8b949e; font-size:16px; line-height:1; }
+  .cat:hover { color:#fff; background:#1c222b; border-radius:4px; }
   .row { display:flex; align-items:center; justify-content:space-between; margin:5px 0; gap:8px; }
   .row label { font-size:12px; flex:1; }
   .row input[type=range] { flex:1.4; }
   .row .val { font-size:11px; width:44px; text-align:right; color:#8b949e; }
   .row.check { justify-content:flex-start; gap:8px; }
+  .pills { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 2px; }
+  .pill { display:flex; align-items:center; gap:6px; font:inherit; font-size:11px;
+          color:var(--text); background:#21262d; border:1px solid var(--line);
+          border-radius:999px; padding:3px 9px; cursor:pointer;
+          transition:background .12s, border-color .12s, box-shadow .12s; }
+  .pill .dot { width:9px; height:9px; border-radius:50%; flex:none; }
+  .pill.active { color:#fff; font-weight:600; }
+  .pill.off { opacity:.45; }
+  .pill.active.off { opacity:.75; }
+  .pill.off .dot { background:#484f58 !important; }
+  /* Native controls: buttons, selects, sliders, checkboxes. */
+  #controls button:not(.pill) {
+    background:#21262d; color:var(--text); border:1px solid var(--line);
+    border-radius:6px; padding:5px 10px; font:inherit; font-size:12px; cursor:pointer; }
+  #controls button:not(.pill):hover { background:#30363d; border-color:#8b949e; }
+  #controls button:not(.pill):active { background:#3a424c; }
+  #controls select {
+    background:#21262d; color:var(--text); border:1px solid var(--line);
+    border-radius:6px; padding:4px 8px; font:inherit; font-size:12px; cursor:pointer; }
+  #controls select:hover { border-color:#8b949e; }
+  #controls option { background:#21262d; color:var(--text); }
+  #controls input[type=range] {
+    -webkit-appearance:none; appearance:none; height:16px;
+    background:transparent; cursor:pointer; }
+  #controls input[type=range]::-webkit-slider-runnable-track {
+    height:4px; background:#30363d; border-radius:2px; }
+  #controls input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; appearance:none; margin-top:-5px; width:14px; height:14px;
+    border-radius:50%; background:var(--accent); border:none; }
+  #controls input[type=range]::-moz-range-track {
+    height:4px; background:#30363d; border-radius:2px; }
+  #controls input[type=range]::-moz-range-thumb {
+    width:14px; height:14px; border-radius:50%; background:var(--accent); border:none; }
+  #controls input[type=range]:disabled { opacity:.45; }
+  #controls input[type=range]:disabled::-webkit-slider-thumb { background:#8b949e; }
+  #controls input[type=range]:disabled::-moz-range-thumb { background:#8b949e; }
+  #controls input[type=checkbox] { accent-color:var(--accent); width:14px; height:14px; }
+  .section.collapsed > .section-body { display:none; }
+  .section.collapsed > .cat::after { content:'\25B8'; }
   #views { display:grid; grid-template-rows: 1.4fr 1fr; min-height:0; overflow:hidden; }
   #scene { position:relative; border-bottom:1px solid var(--line); min-height:0; overflow:hidden; }
   #lower { display:grid; grid-template-columns:1fr 1fr; min-height:0; overflow:hidden; }
@@ -82,6 +124,10 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // ------------------------------------------------------------------
 // Must match MAXP in WARP_GLSL (and the shader's uniform array sizes).
 const MAX_PROJECTORS = 4;
+
+// Per-projector palette, shared by the sidebar pills and the 3D scene markers.
+const PROJ_COLORS=[0xf0883e,0x58a6ff,0xf778ba,0xd29922];
+const projColorHex = i => '#'+PROJ_COLORS[i%PROJ_COLORS.length].toString(16).padStart(6,'0');
 
 // Snapshot a projector's actual pose + intrinsics into its calibration pose. The
 // warp (emitted image) is computed from the calibration pose; the actual pose is
@@ -232,7 +278,20 @@ const slidersEl = document.getElementById('sliders');
 const valEls = {};
 const sliderEls = {};
 const aspectReflectors = {};
-let projSelectEl, projEnableEl, autoAimEl;
+let projPillsEl, projEnableEl, autoAimEl;
+
+// Each control group is a collapsible section: a clickable .cat header + a body.
+// Controls are appended to sectionBody, which addSection points at the group being
+// built, so a section's contents are grouped by construction.
+let sectionBody = slidersEl;
+function addSection(title){
+  const sec=document.createElement('div'); sec.className='section';
+  const h=document.createElement('div'); h.className='cat'; h.textContent=title;
+  const body=document.createElement('div'); body.className='section-body';
+  h.addEventListener('click',()=>sec.classList.toggle('collapsed'));
+  sec.appendChild(h); sec.appendChild(body); slidersEl.appendChild(sec);
+  sectionBody=body; return body;
+}
 
 // Standard display aspect ratios, offered as presets for both the projector panel
 // and the game source signal. "" = Custom (free slider value, no preset match).
@@ -273,25 +332,16 @@ function appendAspectDropdown(key, labelText){
   });
   const sliderEl=sliderEls[key];
   if(sliderEl) sliderEl.addEventListener('input', reflect);
-  row.appendChild(l); row.appendChild(sel); slidersEl.appendChild(row);
+  row.appendChild(l); row.appendChild(sel); sectionBody.appendChild(row);
 }
 
-// Projector list: select the active projector, add/remove, and enable it.
-// The Projector and Blend slider sections below edit whichever is active.
+// Projector list: select the active projector via coloured pills (matching the 3D
+// scene), add/remove, and enable it. The Projector and Blend sections edit the active.
 {
-  const h=document.createElement('div'); h.className='cat'; h.textContent='Projectors';
-  slidersEl.appendChild(h);
+  addSection('Projectors');
 
-  const row=document.createElement('div'); row.className='row';
-  const l=document.createElement('label'); l.textContent='Active';
-  projSelectEl=document.createElement('select'); projSelectEl.style.flex='1.4';
-  projSelectEl.addEventListener('change',()=>{
-    P.activeProj=parseInt(projSelectEl.value,10)||0;
-    syncSlidersToParams();
-    refreshProjectorControls();
-    updateAll();
-  });
-  row.appendChild(l); row.appendChild(projSelectEl); slidersEl.appendChild(row);
+  projPillsEl=document.createElement('div'); projPillsEl.className='pills';
+  sectionBody.appendChild(projPillsEl);
 
   const btnRow=document.createElement('div'); btnRow.className='row';
   const addBtn=document.createElement('button'); addBtn.textContent='Add projector';
@@ -316,25 +366,50 @@ function appendAspectDropdown(key, labelText){
     refreshProjectorControls();
     updateAll();
   });
-  btnRow.appendChild(addBtn); btnRow.appendChild(rmBtn); slidersEl.appendChild(btnRow);
+  btnRow.appendChild(addBtn); btnRow.appendChild(rmBtn); sectionBody.appendChild(btnRow);
 
   const chkRow=document.createElement('div'); chkRow.className='row check';
   projEnableEl=document.createElement('input'); projEnableEl.type='checkbox'; projEnableEl.checked=true;
   const el=document.createElement('label'); el.textContent='Enabled in composite';
   projEnableEl.addEventListener('change',()=>{
-    activeProjector().enabled=projEnableEl.checked?1:0; updateAll();
+    activeProjector().enabled=projEnableEl.checked?1:0;
+    refreshProjectorList();   // reflect the dimmed "off" pill
+    updateAll();
   });
-  chkRow.appendChild(projEnableEl); chkRow.appendChild(el); slidersEl.appendChild(chkRow);
+  chkRow.appendChild(projEnableEl); chkRow.appendChild(el); sectionBody.appendChild(chkRow);
 }
 
-// Refresh the active-projector dropdown options and selection.
+// Rebuild the projector pills, colour-coded to the 3D markers. The active one gets
+// a strong highlight (coloured border, tint, ring, bold); disabled ones are dimmed.
 function refreshProjectorList(){
-  projSelectEl.innerHTML='';
+  projPillsEl.innerHTML='';
   P.projectors.forEach((pr,i)=>{
-    const o=document.createElement('option'); o.value=String(i); o.textContent=pr.name;
-    projSelectEl.appendChild(o);
+    const hex=projColorHex(i);
+    const active=(i===P.activeProj);
+    const off=(pr.enabled<0.5);
+    const b=document.createElement('button');
+    b.className='pill'+(active?' active':'')+(off?' off':'');
+    if(active){
+      b.style.borderColor=hex;
+      b.style.background=hex+'55';
+      b.style.color='#fff';
+      b.style.fontWeight='600';
+      b.style.boxShadow='0 0 0 1px '+hex;
+    }
+    const dot=document.createElement('span'); dot.className='dot';
+    dot.style.background=off?'#484f58':hex;
+    if(active) dot.style.boxShadow='0 0 0 2px rgba(255,255,255,.35)';
+    const t=document.createElement('span'); t.textContent=pr.name;
+    b.appendChild(dot); b.appendChild(t);
+    b.addEventListener('click',()=>{
+      P.activeProj=i;
+      syncSlidersToParams();
+      refreshProjectorControls();
+      refreshProjectorList();
+      updateAll();
+    });
+    projPillsEl.appendChild(b);
   });
-  projSelectEl.value=String(P.activeProj);
 }
 
 // Reflect the active projector's enabled/auto-aim state back into its controls.
@@ -348,12 +423,31 @@ function refreshProjectorControls(){
 }
 
 for (const [cat, items] of SLIDER_DEFS) {
-  const h = document.createElement('div'); h.className='cat'; h.textContent=cat;
-  slidersEl.appendChild(h);
+  addSection(cat);
   for (const [key,label,min,max,step] of items) {
     appendSlider(key,label,min,max,step);
     // Aspect params get a preset dropdown directly beneath their slider.
     if(key==='projAspect')   appendAspectDropdown('projAspect','Panel Preset');
+  }
+  // Group these global/active-projector toggles with the section they belong to.
+  if(cat==='Projector'){
+    const row=document.createElement('div'); row.className='row check';
+    autoAimEl=document.createElement('input'); autoAimEl.type='checkbox'; autoAimEl.checked=true;
+    const l=document.createElement('label'); l.textContent='Auto-aim at screen center';
+    autoAimEl.addEventListener('change',()=>{
+      P.autoAim=autoAimEl.checked?1:0;
+      setAimSlidersDisabled(autoAimEl.checked);
+      updateAll();
+      syncSlidersToParams();  // reflect computed yaw/pitch back into sliders
+    });
+    row.appendChild(autoAimEl); row.appendChild(l); sectionBody.appendChild(row);
+  }
+  if(cat==='Calibration'){
+    const row=document.createElement('div'); row.className='row check';
+    const c=document.createElement('input'); c.type='checkbox'; c.checked=true;
+    const l=document.createElement('label'); l.textContent='Show Calibration Grid';
+    c.addEventListener('change',()=>{ P.showGrid=c.checked?1:0; updateAll(); });
+    row.appendChild(c); row.appendChild(l); sectionBody.appendChild(row);
   }
 }
 
@@ -377,13 +471,12 @@ function appendSlider(key,label,min,max,step){
       syncSlidersToParams();
   });
   row.appendChild(l); row.appendChild(r); row.appendChild(v);
-  slidersEl.appendChild(row);
+  sectionBody.appendChild(row);
 }
 
 // game image selector (dropdown)
 {
-  const h=document.createElement('div'); h.className='cat'; h.textContent='Source Image';
-  slidersEl.appendChild(h);
+  addSection('Source Image');
   const row=document.createElement('div'); row.className='row';
   const l=document.createElement('label'); l.textContent='Game';
   const sel=document.createElement('select');
@@ -394,46 +487,22 @@ function appendSlider(key,label,min,max,step){
   }
   sel.addEventListener('change',()=>{ loadGameImage(GAME_IMAGES[sel.value]); });
   row.appendChild(l); row.appendChild(sel);
-  slidersEl.appendChild(row);
+  sectionBody.appendChild(row);
   // Signal aspect belongs with the source image, not the eye-point.
   appendSlider('sourceAspect','Signal Aspect',1,6,0.001);
   appendAspectDropdown('sourceAspect','Signal Preset');
-}
-
-// auto-aim checkbox (per active projector)
-{
-  const row=document.createElement('div'); row.className='row check';
-  autoAimEl=document.createElement('input'); autoAimEl.type='checkbox'; autoAimEl.checked=true;
-  const l=document.createElement('label'); l.textContent='Auto-aim at screen center';
-  autoAimEl.addEventListener('change',()=>{
-    P.autoAim=autoAimEl.checked?1:0;
-    setAimSlidersDisabled(autoAimEl.checked);
-    updateAll();
-    syncSlidersToParams();  // reflect computed yaw/pitch back into sliders
-  });
-  row.appendChild(autoAimEl); row.appendChild(l); slidersEl.appendChild(row);
-}
-
-// show grid checkbox
-{
-  const row=document.createElement('div'); row.className='row check';
-  const c=document.createElement('input'); c.type='checkbox'; c.checked=true;
-  const l=document.createElement('label'); l.textContent='Show Calibration Grid';
-  c.addEventListener('change',()=>{ P.showGrid=c.checked?1:0; updateAll(); });
-  row.appendChild(c); row.appendChild(l); slidersEl.appendChild(row);
 }
 
 // Warp calibration: decouple the warp (computed from the calibration pose) from
 // the actual projector pose. With "Warp follows projector" off, moving a projector
 // shows the mis-calibration as a displaced/distorted image in the Eye View.
 {
-  const h=document.createElement('div'); h.className='cat'; h.textContent='Warp Calibration';
-  slidersEl.appendChild(h);
+  addSection('Warp Calibration');
   const row=document.createElement('div'); row.className='row check';
   const c=document.createElement('input'); c.type='checkbox'; c.checked=true;
   const l=document.createElement('label'); l.textContent='Warp follows projector';
   c.addEventListener('change',()=>{ P.warpFollows=c.checked?1:0; updateAll(); });
-  row.appendChild(c); row.appendChild(l); slidersEl.appendChild(row);
+  row.appendChild(c); row.appendChild(l); sectionBody.appendChild(row);
   const brow=document.createElement('div'); brow.className='row';
   const b=document.createElement('button'); b.textContent='Recalibrate (snap warp to pose)';
   b.style.flex='1';
@@ -441,7 +510,7 @@ function appendSlider(key,label,min,max,step){
     for(const pr of P.projectors) pr.cal=snapshotCal(pr);
     updateAll();
   });
-  brow.appendChild(b); slidersEl.appendChild(brow);
+  brow.appendChild(b); sectionBody.appendChild(brow);
 }
 
 // Enable/disable the manual aim sliders (yaw/pitch/roll) when auto-aim toggles.
@@ -1111,7 +1180,6 @@ scene3.add(eyeLabelDir);
 const projConeGeo=new THREE.ConeGeometry(0.06,0.16,16);
 projConeGeo.rotateX(Math.PI/2);           // +Y axis -> +Z axis
 projConeGeo.translate(0,0,-0.08);         // put tip at the lens origin, body behind
-const PROJ_COLORS=[0xf0883e,0x58a6ff,0xf778ba,0xd29922];
 const projGroup=new THREE.Group(); scene3.add(projGroup);
 
 // Forward direction from a manual yaw/pitch, matching WARP_GLSL rotYPR on +Z.
