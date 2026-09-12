@@ -73,33 +73,42 @@ not) is deliberately **deferred** in favour of multi-projector work, which is th
 capability Phase 2 exists to deliver.
 
 Multi-projector and edge blending are now implemented in the web simulator (see
-"Completed"); porting the proven math to the standalone app is part of next step 4.
+"Completed"); porting the proven math to the standalone app is part of next step 5.
 
-### 1. Control-point mesh layer
+### 1. Runtime output (web)
+
+Implements FR-29 and FR-33 as specified in `09-runtime.md`: a run mode in
+`web/index.html` that launches one fullscreen output window per enabled projector
+(manually placed), live-synced from the simulator by `postMessage`, with the calibration
+grid as the static source. It lets the warp be checked and tuned on the physical screen
+and exports the calibration as JSON for the gaming rig. It is the last web step before
+the ReShade handoff and the standalone app.
+
+### 2. Control-point mesh layer
 
 Implements FR-16 and FR-17. The analytic solve assumes an ideal cylinder and pinhole
 projector (C-5); the mesh layer absorbs real-world deviation. Best built in the web
 simulator first, where a click canvas exists, then ported. ReShade cannot host this
 usefully.
 
-### 2. Test the ReShade shader on hardware
+### 3. Test the ReShade shader on hardware
 
 First **sync `reshade/BendR.fx` to the current web math**: the projector/source aspect
 split, the floor model + `ScreenBase` bounds, and aspect-square grid cells all landed
 in the simulator after the shader was last touched. Then run on hardware to close the
 "written but unverified" gap. Expect sign and handedness issues on first run.
 
-### 3. Semi-spherical screens
+### 4. Semi-spherical screens
 
 Implements FR-3. Swap the cylinder intersection for a sphere; the rest of the derivation
 is unchanged.
 
-### 4. Standalone app
+### 5. Standalone app
 
 Per the milestones in `06-standalone-app.md`. Milestone 4 supersedes the ReShade shader
 for single-projector use; milestone 5 delivers multi-projector blending.
 
-### 5. Head-shadow indicator
+### 6. Head-shadow indicator
 
 Implements FR-27. Draw the beam's lower edge and flag intersection with a head volume at
 the eye-point. The overhead default is shadow-conscious but unverified for tall screens

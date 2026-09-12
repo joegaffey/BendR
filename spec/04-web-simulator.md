@@ -185,9 +185,15 @@ diagnose, as the engine's default message omits the specific error.
 
 ## Verification
 
-Against the acceptance criteria in `02-requirements.md`: AC-1, AC-2, AC-3, AC-4, AC-5,
-AC-6 all apply to this component and are met, except that AC-1 verifies straightness
-only in the sense described under the FR-25 limitation above. AC-8 and AC-9 are met by
-the multi-projector composite: each projector's warp is independently correct (AC-9), and
-the composite exposes photometric mismatches and ramp seams (AC-8). The FR-25 limitation
-still applies to geometric mis-calibration.
+Against the acceptance criteria in `02-requirements.md`: AC-1 through AC-6 apply to this
+component and are met. AC-8 and AC-9 are met by the multi-projector composite: each
+projector's warp is independently correct (AC-9), and the composite exposes photometric
+mismatches and ramp seams (AC-8). The two-pass Eye View with the calibration/actual pose
+split additionally exposes geometric mis-calibration when the warp is frozen. AC-10
+through AC-12 apply to the runtime output below.
+
+## Runtime output
+
+The same file also serves as the runtime output for on-rig validation: `#output=<j>`
+renders one projector's warp full-window, launched and live-synced from the simulator.
+That mode is specified separately in `09-runtime.md`.

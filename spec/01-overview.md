@@ -59,6 +59,11 @@ correct projection without a commercial licence.
 **Phase 1 — single projector.** Analytic off-axis cylinder correction, validated in
 the web simulator and delivered as a ReShade post-process shader.
 
+**Phase 1.5 — validate on the rig.** The web simulator launches each projector's warp
+fullscreen on the physical screens for on-rig tuning, then exports the calibration as
+JSON for ReShade or the app. Static source; live capture stays with ReShade and the app.
+See `09-runtime.md`.
+
 **Phase 2 — multi-projector.** Standalone Windows application: desktop capture, GPU
 warp, per-projector fullscreen output, edge blending. Reuses Phase 1 math.
 
@@ -70,3 +75,5 @@ warp, per-projector fullscreen output, edge blending. Reuses Phase 1 math.
 - `05-reshade-shader.md` — ReShade shader specification
 - `06-standalone-app.md` — Phase 2 application specification
 - `07-roadmap.md` — status and sequencing
+- `08-backlog.md` — known defects and planned additions
+- `09-runtime.md` — Phase 1.5 runtime output: fullscreen outputs and JSON export

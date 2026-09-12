@@ -47,6 +47,12 @@ Includes a calibration grid overlay to check straightness while tuning.
 - Limits: single output only (no multi-projector blend); ReShade injection may be
   flagged by anti-cheat in some online titles.
 
+### Phase 1.5 — Validate on the rig (web runtime)
+The simulator can launch each projector's warp fullscreen on the real screens for
+on-rig tuning, then export the calibration as JSON for ReShade or the app. Static source
+(the calibration grid); live capture stays with ReShade and the app. See
+`spec/09-runtime.md`.
+
 ### Phase 2 — Standalone capture/warp/blend app (multi-projector)
 Desktop Duplication (capture) -> GPU warp + blend shader -> fullscreen output per
 projector. Reuses the Phase 1 shader math (~90% identical HLSL). Adds edge blending
@@ -84,6 +90,8 @@ See [`spec/`](spec/README.md). For the core idea, read `spec/01-overview.md` the
 ## Roadmap
 
 - [ ] Phase 1: off-axis cylinder `BendR.fx` + calibration grid overlay
+- [ ] Phase 1.5: launch fullscreen outputs on the rig for validation, and export the
+      calibration as JSON (`spec/09-runtime.md`)
 - [ ] Phase 1: semi-spherical mode
 - [ ] Phase 2: capture -> passthrough -> fullscreen output pipeline
 - [ ] Phase 2: port shader math into the app

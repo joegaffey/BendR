@@ -91,9 +91,15 @@ than a true perspective camera. See `04-web-simulator.md` and `07-roadmap.md`.
 |---|---|---|
 | FR-28 | Warp a live game frame with no per-title integration. | Partial |
 | FR-29 | Support multiple output displays, one per projector. | Planned |
+| FR-33 | Launch the calibrated warp fullscreen on each projector for on-rig validation (static source), tuned live from the simulator. | Planned |
 
 FR-28 is partial: the ReShade shader achieves it by injection, with the limits in
 `05-reshade-shader.md`. Universal capture arrives with the standalone app.
+
+FR-29 and FR-33 are specified in `09-runtime.md`: one fullscreen output window per
+projector, seeded and live-synced from the simulator, with a static source (the
+calibration grid). This gives multi-output on the rig without capture; FR-28's live game
+frame remains ReShade (single projector) and the standalone app (multi).
 
 ## Non-functional requirements
 
@@ -146,3 +152,10 @@ FR-28 is partial: the ReShade shader achieves it by injection, with the limits i
   corresponding per-projector control nulls.
 - **AC-9** Each projector's warp is independently correct: the calibration grid is
   straight for every projector regardless of the other projectors' poses.
+- **AC-10** Launching outputs for all enabled projectors opens one window each; each
+  renders its projector's warp full-window, and with the calibration grid the lines
+  appear straight from the eye-point and match the simulator's Projector Output pane.
+- **AC-11** Changing any parameter in the controller updates the open outputs live,
+  without reloading them.
+- **AC-12** Exporting produces JSON that, used as an output's `cfg`, reproduces the same
+  warp as the controller.

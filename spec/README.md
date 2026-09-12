@@ -13,6 +13,7 @@ edge blending for curved and semi-spherical projection screens.
 | [06-standalone-app.md](06-standalone-app.md) | Phase 2 application specification |
 | [07-roadmap.md](07-roadmap.md) | Current status, next steps, deferred work |
 | [08-backlog.md](08-backlog.md) | Known defects and planned additions |
+| [09-runtime.md](09-runtime.md) | Phase 1.5 runtime output: fullscreen outputs on the rig, JSON export |
 
 ## Reading order
 
