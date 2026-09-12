@@ -48,6 +48,18 @@ The default is an overhead mount: above and behind the eye, tilted down. This av
 the viewer's head shadowing the beam, which rules out placements level with or behind
 the head at eye height.
 
+With multiple projectors (FR-9), each projector has its own copy of this parameter set,
+plus the per-projector blend parameters in "Multi-projector and edge blending" below.
+
+### Blend (per projector)
+
+| Name | Unit | Default | Range |
+|---|---|---|---|
+| `blendLeft`, `blendRight`, `blendTop`, `blendBottom` | fraction of half-extent | 0 | 0 – 1 |
+| `blackLevel` | linear | 0 | 0 – 0.1 |
+| `gamma` | – | 2.2 | 1.0 – 3.0 |
+| `gain` | – | 1.0 | 0.5 – 1.0 |
+
 ### Derived values
 
 `projYaw` and `projPitch` are computed when auto-aim is enabled; `projHFovDeg` is
@@ -202,6 +214,137 @@ small margin, and clamp to the valid range.
 Without auto-fit, changing screen radius, arc, or height can place the entire screen
 outside a fixed beam, so every ray misses and output goes black.
 
+## Multi-projector and edge blending
+
+Phase 2 extends the single-projector derivation to a rig of N projectors that share one
+screen and one eye-point (FR-9, FR-18, FR-19, FR-20). Each projector is independent: it
+has its own pose, intrinsics, and photometric parameters, and its warp is Steps 1–7 above
+computed with that projector's values. **There is no new warp math.** Blending is the
+only genuinely new computation.
+
+### Coverage
+
+A screen point S is illuminated by projector *j* when both hold:
+
+1. S is within the screen bounds (Step 5).
+2. The inverse of Steps 1–4 maps S into projector *j*'s panel: `|u_j| ≤ 1` and
+   `|v_j| ≤ 1`, where `(u_j, v_j)` are the panel NDC coordinates of S for projector *j*.
+
+This is the inverse of the per-projector ray cast, and is derived from geometry rather
+than a user-set coverage mode (principle 4). A point may be covered by zero, one, or
+several projectors; the number covering S is written `k(S)`.
+
+### Composite model
+
+Projected light adds on the screen, so blending is performed in **linear light**, after
+decoding the source signal from sRGB:
+
+```
+C(S) = Σ_j α_j(S) · L_j(S)
+```
+
+where:
+
+- `L_j(S)` is the linear-light output projector *j* deposits at S, after the photometric
+  model and black-level lift below.
+- `α_j(S) ∈ [0,1]` is projector *j*'s blend weight at S, zero where it does not cover S.
+
+The alpha weights form a **partition of unity** across the overlap:
+
+```
+Σ_j α_j(S) = 1     for every covered S
+```
+
+This is normative: it keeps total luminance constant across the overlap, so the seam
+disappears for matched projectors. Where the sum of the unnormalised weights is nonzero,
+implementations normalise:
+
+```
+α_j(S) = w_j(S) / Σ_k w_k(S)
+```
+
+Complementary ramps between adjacent projectors are the intended way to satisfy this and
+make the normalisation a no-op in the common two-projector case.
+
+### Edge ramps
+
+Each projector has four blend widths, `blendLeft`, `blendRight`, `blendTop`, and
+`blendBottom`, expressed as a fraction of the panel half-width (horizontal) or
+half-height (vertical). A width of 0 is a hard edge.
+
+Work in panel coordinates `p = (u_j+1)/2` and `q = (v_j+1)/2`, both in [0,1]. For a
+width `w ∈ [0,1]` define the separable ramp:
+
+```
+ramp(t, w) = 1                        if w = 0
+           = smoothstep(0, w, t)      otherwise
+```
+
+The unnormalised weight is then:
+
+```
+w_j(S) = min( ramp(p,     blendLeft),
+              ramp(1−p,   blendRight),
+              ramp(q,     blendBottom),
+              ramp(1−q,   blendTop) )
+```
+
+`min` combines the four edges without over-attenuating corners. Widths should be set so
+adjacent projectors' ramps overlap; across the overlap the two ramps are complementary
+and sum to 1.
+
+### Photometric model (per projector)
+
+Real projectors differ. Three per-projector photometric parameters are modelled, applied
+to the signal before blending:
+
+```
+L_j = blackLevel_j + gain_j · (signal_linear)^gamma_j
+```
+
+- `blackLevel_j` — linear light emitted for a black signal.
+- `gain_j` — peak white above black, relative to the rig reference.
+- `gamma_j` — the projector's transfer exponent (default 2.2).
+
+Modelling these is what makes blend validation meaningful: with identical projectors the
+ramps sum to 1 and no seam can appear, so black-level lift and gamma correction are never
+exercised. Full colour/white-point matching remains out of scope (`01-overview.md`).
+
+### Black-level lift
+
+Because black is additive, the composite black floor at S is the sum of the covering
+projectors' black levels:
+
+```
+black(S) = Σ_j α_j(S) · blackLevel_j
+```
+
+In the deepest overlap, K projectors with equal black `b` give `K·b`, brighter than a
+single projector's `b`. **Black-level lift** raises every projector's black floor to that
+deepest-overlap value `B = max_S black(S)`, so black is uniform across the screen:
+
+```
+L_j' = B + (1 − B) · (gain_j · (signal_linear)^gamma_j)
+```
+
+With a partition-of-unity alpha and a common lift B, the composite black is B everywhere.
+This is FR-19.
+
+### Gamma
+
+All of the above is computed in linear light. The source signal is decoded from sRGB
+before applying `gamma_j`, the ramps, and the sum, and the composite is re-encoded to
+sRGB for display. The ramp shape is applied to linear values, not to gamma-encoded ones;
+this is what FR-20 means by gamma-correct ramps.
+
+### Verification
+
+- **AC-8** — two projectors with matched photometrics, ramps set to overlap, produce no
+  visible seam in the grid or a flat field, and uniform black. Introducing a gain or
+  gamma mismatch makes a seam appear that the corresponding per-projector control nulls.
+- **AC-9** — each projector's warp is independently correct: the grid is straight for
+  every projector regardless of the others' poses.
+
 ## Orientation of visual markers
 
 Markers representing the projector must use the direction vector from Step 3, not Euler
@@ -230,5 +373,6 @@ Two failure modes this avoids:
 | Game FOV is rectilinear and matches projector aspect | Ultra-wide source may be slightly off | Per-axis game FOV |
 | Single eye-point | Correct for one viewpoint | Inherent (C-4) |
 | Ideal cylinder, pinhole projector | Screen sag and lens distortion uncorrected | Mesh offset layer (FR-16) |
+| Additive overlap, per-projector black/gain/gamma only | White-point and per-channel colour differences uncorrected | Out of scope (`01-overview.md`) |
 | Cylinder only | Dome unsupported | Sphere intersection in Step 4 |
 | Per-fragment analytic solve | Redundant computation | Bake to a warp-map texture |

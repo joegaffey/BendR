@@ -53,6 +53,11 @@ which is not what happens and would invalidate the straightness check.
 | FR-19 | Black-level lift compensation in overlap regions. | Planned |
 | FR-20 | Gamma-correct blend ramps. | Planned |
 
+FR-18, FR-19, and FR-20 share one normative model — the additive linear-light composite,
+partition-of-unity alpha ramps, per-projector photometric parameters, and black-level
+lift specified in `03-geometry.md`, "Multi-projector and edge blending". Implementations
+must agree with it. FR-9 (multiple projectors) is the same section's coverage model.
+
 ### Calibration and feedback
 
 | ID | Requirement | Status |
@@ -132,3 +137,9 @@ FR-28 is partial: the ReShade shader achieves it by injection, with the limits i
   represents a single-projector view at the stated source FOV.
 - **AC-5** Shader compiles with no errors or warnings on a WebGL2 browser.
 - **AC-6** The control sidebar scrolls when its content exceeds the viewport.
+- **AC-8** With two projectors and matched photometrics, blend ramps set to overlap
+  produce no visible seam in the calibration grid or a flat field, and black is uniform
+  across the screen. Introducing a gain or gamma mismatch makes a seam appear that the
+  corresponding per-projector control nulls.
+- **AC-9** Each projector's warp is independently correct: the calibration grid is
+  straight for every projector regardless of the other projectors' poses.

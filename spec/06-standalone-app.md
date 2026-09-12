@@ -80,13 +80,19 @@ A draggable canvas is impractical in ReShade, which offers only parameter rows.
 
 ### Edge blending
 
+The normative model — additive linear-light composite, partition-of-unity alpha ramps,
+per-projector black/gain/gamma, and black-level lift — is specified in
+`03-geometry.md`, "Multi-projector and edge blending". The app implements it; it does not
+redefine it.
+
 - Alpha-ramp across overlap regions (FR-18).
 - Black-level lift compensation, since overlapping projectors raise black (FR-19).
 - Gamma-correct ramps so the blend is photometrically smooth (FR-20).
 
 ### Multi-projector
 
-- Per-projector pose, intrinsics, warp, and blend (FR-9).
+- Per-projector pose, intrinsics, warp, and blend (FR-9), with coverage derived from
+  geometry per the same section.
 - The analytic solve runs independently per projector; blending is the only genuinely
   new math relative to Phase 1.
 

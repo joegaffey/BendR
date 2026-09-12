@@ -92,6 +92,24 @@ Derived controls grey out while their automatic mode is active and display the c
 value, so the sliders remain a readable report of the current pose. Changing projector
 position or screen shape refreshes them.
 
+### Multi-projector (planned)
+
+Not yet implemented. The simulator is the validation sandbox for the blend model in
+`03-geometry.md`, "Multi-projector and edge blending", so the eventual controls are:
+
+| Control | Type | Behaviour |
+|---|---|---|
+| Projector list | add / remove / select | Each projector owns a full pose + intrinsics set; the panel edits the selected one |
+| Enable | checkbox | Include or exclude a projector from the composite |
+| Blend L/R/T/B | sliders | Per-edge ramp widths as a fraction of the half-extent |
+| Black level / gamma / gain | sliders | Per-projector photometrics for black-level lift and gamma correction |
+| Composite view | pane | Renders the additive composite onto the screen; overlap and seam regions visible |
+| Mismatched projectors | preset | Sets differing gain/gamma/black so a seam appears, to demonstrate the correction |
+
+Each projector's warp is validated independently (AC-9); the composite validates the
+blend (AC-8). Per-projector photometrics are deliberately limited to black, gain, and
+gamma — colour/white-point matching is out of scope (`01-overview.md`).
+
 ## Source content
 
 A dropdown selects either a procedural test pattern or a real sim screenshot.
@@ -144,4 +162,5 @@ diagnose, as the engine's default message omits the specific error.
 
 Against the acceptance criteria in `02-requirements.md`: AC-1, AC-2, AC-3, AC-4, AC-5,
 AC-6 all apply to this component and are met, except that AC-1 verifies straightness
-only in the sense described under the FR-25 limitation above.
+only in the sense described under the FR-25 limitation above. AC-8 and AC-9 apply to the
+planned multi-projector work above and are not yet met.

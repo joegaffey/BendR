@@ -133,13 +133,19 @@ render-to-texture foundation.
 
 ## Suggested order
 
-D-1 and D-2 are done. The aspect-split half of D-3 is done alongside D-2 (they shared the
-same `projAspect` conflation). Remaining:
+D-1 and D-2 are done, and the aspect-split half of D-3 is done alongside D-2 (they shared
+the same `projAspect` conflation). D-3's remaining framing/FOV half is **deferred** while
+multi-projector work is prioritised.
 
-1. **D-3 (framing/FOV)** — the bundled images are the primary calibration reference;
-   until the centre-third framing and its coupled FOV land, they show three copies of the
-   game at the wrong horizontal FOV. The item most likely to mislead, since a
-   cropped-but-wrong-FOV result looks plausible. The `SourceAspect` foundation is in place.
+1. **Multi-projector + edge blending (FR-9, FR-18, FR-19, FR-20)** — the normative model
+   is now specified in `03-geometry.md`, "Multi-projector and edge blending". Implement it
+   in the web simulator first (data-driven projectors array, composite view, per-projector
+   black/gain/gamma, mismatched-projector preset), then port to the app. This is the
+   capability Phase 2 exists to deliver.
 2. **FR-31 with the two-pass eye view** — shared render-to-texture foundation.
 3. **FR-30** — largest, and benefits from FR-31 already establishing projector-driven
    rendering in the 3D scene.
+4. **D-3 (framing/FOV)** — deferred. The bundled images are the primary calibration
+   reference and currently show three copies of the game at the wrong horizontal FOV; the
+   `SourceAspect` foundation is in place, and the remaining region-selection UV transform
+   plus coupled FOV can land once multi-projector is underway.

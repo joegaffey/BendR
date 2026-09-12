@@ -169,14 +169,34 @@ sampling.
    and the beam covers the screen. Projector aim and FOV are manual (no auto-fit), so
    they behave like a real projector. On a fixed rig this is a one-time step.
 
+## Multi-projector and edge blending (Phase 2)
+
+Normative detail is in `03-geometry.md`, "Multi-projector and edge blending". In short:
+N projectors share the screen and eye-point, and each runs the same Steps 1–7 with its
+own pose and intrinsics — no new warp math. A screen point is covered by a projector when
+its inverse projection lands inside that projector's panel. The composite is additive in
+linear light:
+
+```
+C(S) = Σ_j α_j(S) · L_j(S)
+```
+
+with a partition-of-unity alpha (`Σ α_j = 1`) built from per-edge smoothstep ramps. Each
+projector carries `blackLevel`, `gain`, and `gamma`, so mismatched hardware produces a
+real seam until corrected. Black-level lift raises every projector's black floor to the
+deepest-overlap value so black stays uniform. Ramping happens in linear light (decode
+sRGB, blend, re-encode). This is the only genuinely new math over the single-projector
+case.
+
 ## Known simplifications (Phase 1)
 
 - **Game FOV assumed rectilinear.** Its vertical extent follows `SourceAspect`,
   which is independent of the projector panel aspect. Ultra-wide sim FOVs may want a
   per-axis game FOV; easy to add.
 - **Single eye-point** — correct for one head position (inherent to all such warps).
-- **No blending** — single projector only. Multi-projector edge blend arrives in the
-  standalone app (Phase 2).
+- **Single projector in Phase 1** — the web simulator and ReShade shader warp one
+  output. The multi-projector composite above is Phase 2; its normative model is already
+  specified.
 - **Cylinder only** — semi-spherical mode swaps the Step-3 intersection for a sphere.
 
 ## Roadmap for this math
@@ -184,4 +204,5 @@ sampling.
 - [ ] Per-axis game FOV (independent H/V) for ultra-wide.
 - [ ] Sphere intersection for semi-spherical screens.
 - [ ] Bake the mapping into a warp-map texture (perf) instead of per-pixel solve.
-- [ ] Multi-projector: same solve per projector + overlap alpha ramp + black-level.
+- [ ] Multi-projector: same solve per projector + overlap alpha ramp + black-level
+      (normative model now specified in `03-geometry.md`).

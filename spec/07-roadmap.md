@@ -41,6 +41,10 @@ Repository: local git only, branch `main`, no remote configured.
   to the panel aspect so window resizing no longer stretches it; the eye pane fills
   without stretching by construction.
 - **Styled control-panel scrollbar** (D-1).
+- **Normative multi-projector + edge-blending model** specified in `03-geometry.md`
+  (FR-9, FR-18, FR-19, FR-20): independent projectors, additive linear-light composite,
+  partition-of-unity alpha ramps, per-projector black/gain/gamma, and black-level lift.
+  No implementation yet — that is next step 1.
 
 ### Removed
 
@@ -52,11 +56,24 @@ Repository: local git only, branch `main`, no remote configured.
 ## Next steps
 
 Ordered by dependency, not necessarily by priority. Known defects and smaller additions
-are tracked separately in `08-backlog.md`. D-1 and D-2 are now resolved; the remaining
-open defect is D-3's framing/FOV coupling (the aspect split is done; centre-third
-framing of the triple-screen captures is not).
+are tracked separately in `08-backlog.md`. D-1 and D-2 are resolved. D-3's framing/FOV
+coupling (the aspect split is done; centre-third framing of the triple-screen captures is
+not) is deliberately **deferred** in favour of multi-projector work, which is the
+capability Phase 2 exists to deliver.
 
-### 1. Rigorous two-pass eye view
+### 1. Implement multi-projector and edge blending
+
+The normative model is now specified: `03-geometry.md`, "Multi-projector and edge
+blending" (FR-9, FR-18, FR-19, FR-20). It defines N independent projectors sharing the
+screen and eye-point, geometric coverage, an additive linear-light composite with
+partition-of-unity alpha ramps, per-projector black/gain/gamma, and black-level lift.
+
+Implement in the **web simulator first** — it is the validation sandbox, and it makes the
+single-projector state data-driven (a projectors array) before any native port. Then port
+the proven math to the standalone app. Validate against AC-8 and AC-9, including the
+mismatched-projector case that makes a seam appear until corrected.
+
+### 2. Rigorous two-pass eye view
 
 Resolves the FR-25 limitation: the current eye view is single-pass analytic — it samples
 the game directly via the eye's view of each screen point, so it ALWAYS shows the ideal
@@ -89,31 +106,31 @@ Also in scope:
 Build alongside FR-31 (projected image on the screen in the 3D view), which needs the
 same render-to-texture foundation.
 
-### 2. Control-point mesh layer
+### 3. Control-point mesh layer
 
 Implements FR-16 and FR-17. The analytic solve assumes an ideal cylinder and pinhole
 projector (C-5); the mesh layer absorbs real-world deviation. Best built in the web
 simulator first, where a click canvas exists, then ported. ReShade cannot host this
 usefully.
 
-### 3. Test the ReShade shader on hardware
+### 4. Test the ReShade shader on hardware
 
 First **sync `reshade/BendR.fx` to the current web math**: the projector/source aspect
 split, the floor model + `ScreenBase` bounds, and aspect-square grid cells all landed
 in the simulator after the shader was last touched. Then run on hardware to close the
 "written but unverified" gap. Expect sign and handedness issues on first run.
 
-### 4. Semi-spherical screens
+### 5. Semi-spherical screens
 
 Implements FR-3. Swap the cylinder intersection for a sphere; the rest of the derivation
 is unchanged.
 
-### 5. Standalone app
+### 6. Standalone app
 
 Per the milestones in `06-standalone-app.md`. Milestone 4 supersedes the ReShade shader
 for single-projector use; milestone 5 delivers multi-projector blending.
 
-### 6. Head-shadow indicator
+### 7. Head-shadow indicator
 
 Implements FR-27. Draw the beam's lower edge and flag intersection with a head volume at
 the eye-point. The overhead default is shadow-conscious but unverified for tall screens
