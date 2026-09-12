@@ -32,22 +32,28 @@
   .row input[type=range] { flex:1.4; }
   .row .val { font-size:11px; width:44px; text-align:right; color:#8b949e; }
   .row.check { justify-content:flex-start; gap:8px; }
-  .pills { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 2px; }
-  .pill { display:flex; align-items:center; gap:6px; font:inherit; font-size:11px;
-          color:var(--text); background:#21262d; border:1px solid var(--line);
-          border-radius:999px; padding:3px 9px; cursor:pointer;
-          transition:background .12s, border-color .12s, box-shadow .12s; }
-  .pill .dot { width:9px; height:9px; border-radius:50%; flex:none; }
-  .pill.active { color:#fff; font-weight:600; }
-  .pill.off { opacity:.45; }
-  .pill.active.off { opacity:.75; }
-  .pill.off .dot { background:#484f58 !important; }
+  .proj-list { display:flex; flex-direction:column; gap:6px; margin:6px 0 4px; }
+  .proj-row { border:1px solid var(--line); border-radius:6px; padding:5px 7px;
+              background:#1c222b; transition:border-color .12s, box-shadow .12s; }
+  .proj-row.active { background:#2d333b; }
+  .proj-row.off .proj-name { opacity:.55; }
+  .proj-row-top { display:flex; align-items:center; gap:7px; }
+  .proj-row .dot { width:10px; height:10px; border-radius:50%; flex:none; }
+  .proj-name { flex:1; text-align:left; background:none; border:none; color:var(--text);
+               font:inherit; font-size:12px; cursor:pointer; padding:0; }
+  .proj-row.active .proj-name { color:#fff; font-weight:600; }
+  .proj-del { background:none; border:none; color:#8b949e; cursor:pointer; padding:1px 3px;
+              border-radius:4px; line-height:0; display:flex; align-items:center; }
+  .proj-del:hover { color:#f85149; background:rgba(248,81,73,.14); }
+  .proj-row-opts { display:flex; gap:12px; margin-top:4px; padding-left:17px; }
+  .mini { display:flex; align-items:center; gap:4px; font-size:11px; color:#8b949e;
+          cursor:pointer; }
   /* Native controls: buttons, selects, sliders, checkboxes. */
-  #controls button:not(.pill) {
+  #controls button:not(.proj-name):not(.proj-del) {
     background:#21262d; color:var(--text); border:1px solid var(--line);
     border-radius:6px; padding:5px 10px; font:inherit; font-size:12px; cursor:pointer; }
-  #controls button:not(.pill):hover { background:#30363d; border-color:#8b949e; }
-  #controls button:not(.pill):active { background:#3a424c; }
+  #controls button:not(.proj-name):not(.proj-del):hover { background:#30363d; border-color:#8b949e; }
+  #controls button:not(.proj-name):not(.proj-del):active { background:#3a424c; }
   #controls select {
     background:#21262d; color:var(--text); border:1px solid var(--line);
     border-radius:6px; padding:4px 8px; font:inherit; font-size:12px; cursor:pointer; }
@@ -145,7 +151,8 @@ function snapshotCal(pr){
 function makeProjector(i){
   const pr = {
     name: 'Projector ' + (i+1),
-    enabled: 1,
+    enabled: 1,   // participates in the composite
+    visible: 1,   // marker/frustum shown in the 3D scene
     projX: 0.0, projY: 2.2, projZ: -1.3,
     projYaw: 0.0, projPitch: -15.0, projRoll: 0.0,
     projHFovDeg: 90.0, projAspect: 1.777,
@@ -278,7 +285,7 @@ const slidersEl = document.getElementById('sliders');
 const valEls = {};
 const sliderEls = {};
 const aspectReflectors = {};
-let projPillsEl, projEnableEl, autoAimEl;
+let projPillsEl, autoAimEl;
 
 // Each control group is a collapsible section: a clickable .cat header + a body.
 // Controls are appended to sectionBody, which addSection points at the group being
@@ -335,18 +342,17 @@ function appendAspectDropdown(key, labelText){
   row.appendChild(l); row.appendChild(sel); sectionBody.appendChild(row);
 }
 
-// Projector list: select the active projector via coloured pills (matching the 3D
-// scene), add/remove, and enable it. The Projector and Blend sections edit the active.
+// Projector list: one row per projector with its own controls — select it, toggle
+// composite participation and scene visibility, and delete it. The Projector and
+// Blend sections below edit the active projector.
 {
   addSection('Projectors');
-
-  projPillsEl=document.createElement('div'); projPillsEl.className='pills';
+  projPillsEl=document.createElement('div'); projPillsEl.className='proj-list';
   sectionBody.appendChild(projPillsEl);
 
   const btnRow=document.createElement('div'); btnRow.className='row';
   const addBtn=document.createElement('button'); addBtn.textContent='Add projector';
-  const rmBtn=document.createElement('button'); rmBtn.textContent='Remove';
-  addBtn.style.flex='1'; rmBtn.style.flex='1';
+  addBtn.style.flex='1';
   addBtn.addEventListener('click',()=>{
     if(P.projectors.length>=MAX_PROJECTORS) return;
     P.projectors.push(makeProjector(P.projectors.length));
@@ -357,64 +363,77 @@ function appendAspectDropdown(key, labelText){
     refreshProjectorControls();
     updateAll();
   });
-  rmBtn.addEventListener('click',()=>{
-    if(P.projectors.length<=1) return;
-    P.projectors.splice(P.activeProj,1);
-    P.activeProj=Math.max(0,P.activeProj-1);
-    refreshProjectorList();
-    syncSlidersToParams();
-    refreshProjectorControls();
-    updateAll();
-  });
-  btnRow.appendChild(addBtn); btnRow.appendChild(rmBtn); sectionBody.appendChild(btnRow);
-
-  const chkRow=document.createElement('div'); chkRow.className='row check';
-  projEnableEl=document.createElement('input'); projEnableEl.type='checkbox'; projEnableEl.checked=true;
-  const el=document.createElement('label'); el.textContent='Enabled in composite';
-  projEnableEl.addEventListener('change',()=>{
-    activeProjector().enabled=projEnableEl.checked?1:0;
-    refreshProjectorList();   // reflect the dimmed "off" pill
-    updateAll();
-  });
-  chkRow.appendChild(projEnableEl); chkRow.appendChild(el); sectionBody.appendChild(chkRow);
+  btnRow.appendChild(addBtn); sectionBody.appendChild(btnRow);
 }
 
-// Rebuild the projector pills, colour-coded to the 3D markers. The active one gets
-// a strong highlight (coloured border, tint, ring, bold); disabled ones are dimmed.
+// Delete a projector by index, keeping the active index valid.
+function deleteProjector(i){
+  if(P.projectors.length<=1) return;
+  P.projectors.splice(i,1);
+  if(P.activeProj>=P.projectors.length) P.activeProj=P.projectors.length-1;
+  else if(P.activeProj>i) P.activeProj--;
+  refreshProjectorList();
+  syncSlidersToParams();
+  refreshProjectorControls();
+  updateAll();
+}
+
+// Small labelled checkbox used by the projector rows.
+function miniCheck(label, checked, onChange){
+  const l=document.createElement('label'); l.className='mini';
+  const c=document.createElement('input'); c.type='checkbox'; c.checked=checked;
+  c.addEventListener('change',()=>onChange(c.checked));
+  l.appendChild(c); l.appendChild(document.createTextNode(label));
+  return l;
+}
+
+// Rebuild the projector rows. The active one is highlighted; its dot uses the same
+// scene colour as the 3D marker.
 function refreshProjectorList(){
   projPillsEl.innerHTML='';
   P.projectors.forEach((pr,i)=>{
     const hex=projColorHex(i);
     const active=(i===P.activeProj);
-    const off=(pr.enabled<0.5);
-    const b=document.createElement('button');
-    b.className='pill'+(active?' active':'')+(off?' off':'');
-    if(active){
-      b.style.borderColor=hex;
-      b.style.background=hex+'55';
-      b.style.color='#fff';
-      b.style.fontWeight='600';
-      b.style.boxShadow='0 0 0 1px '+hex;
-    }
-    const dot=document.createElement('span'); dot.className='dot';
-    dot.style.background=off?'#484f58':hex;
-    if(active) dot.style.boxShadow='0 0 0 2px rgba(255,255,255,.35)';
-    const t=document.createElement('span'); t.textContent=pr.name;
-    b.appendChild(dot); b.appendChild(t);
-    b.addEventListener('click',()=>{
+    const row=document.createElement('div');
+    row.className='proj-row'+(active?' active':'')+(pr.enabled<0.5?' off':'');
+    row.style.borderColor=active?hex:'var(--line)';
+    if(active) row.style.boxShadow='0 0 0 1px '+hex;
+
+    const top=document.createElement('div'); top.className='proj-row-top';
+    const dot=document.createElement('span'); dot.className='dot'; dot.style.background=hex;
+    const name=document.createElement('button'); name.className='proj-name';
+    name.textContent=pr.name;
+    name.addEventListener('click',()=>{
       P.activeProj=i;
       syncSlidersToParams();
       refreshProjectorControls();
       refreshProjectorList();
       updateAll();
     });
-    projPillsEl.appendChild(b);
+    const x=document.createElement('button'); x.className='proj-del';
+    x.title='Delete projector';
+    x.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" '+
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+
+      '<polyline points="3 6 5 6 21 6"/>'+
+      '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>'+
+      '<path d="M10 11v6M14 11v6"/>'+
+      '<path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+    x.addEventListener('click',()=>deleteProjector(i));
+    top.appendChild(dot); top.appendChild(name); top.appendChild(x);
+
+    const opts=document.createElement('div'); opts.className='proj-row-opts';
+    opts.appendChild(miniCheck('Composite', pr.enabled>=0.5,
+      v=>{ pr.enabled=v?1:0; refreshProjectorList(); updateAll(); }));
+    opts.appendChild(miniCheck('Scene', pr.visible>=0.5,
+      v=>{ pr.visible=v?1:0; updateAll(); }));
+
+    row.appendChild(top); row.appendChild(opts);
+    projPillsEl.appendChild(row);
   });
 }
 
-// Reflect the active projector's enabled/auto-aim state back into its controls.
+// Reflect the active projector's auto-aim state and panel preset into its controls.
 function refreshProjectorControls(){
-  projEnableEl.checked = activeProjector().enabled>=0.5;
   if(autoAimEl){
     autoAimEl.checked = activeProjector().autoAim>=0.5;
     setAimSlidersDisabled(autoAimEl.checked);
@@ -1246,6 +1265,18 @@ function frustumGeometry(pos, dir, hFovDeg, aspect){
   return new THREE.BufferGeometry().setFromPoints(pts);
 }
 
+// Make a marker draw on top of everything else (used for the selected projector):
+// a high render order plus no depth test, so it is never hidden by other markers,
+// frusta, or the transparent screen. Higher `order` draws later.
+function setOnTop(obj, onTop, order){
+  obj.renderOrder = onTop ? order : 0;
+  if(onTop){
+    obj.material.transparent = true;
+    obj.material.depthTest = false;
+    obj.material.depthWrite = false;
+  }
+}
+
 // Rebuild every projector's marker + frustum. N is small (<= MAX_PROJECTORS), so a
 // full rebuild per parameter edit is fine. The cone geometry is shared, so it is
 // never disposed; per-projector line geometries and materials are.
@@ -1257,6 +1288,7 @@ function rebuildProjectors3D(){
     projGroup.remove(c);
   }
   P.projectors.forEach((pr,i)=>{
+    if(pr.visible<0.5) return;           // hidden from the scene
     const color=PROJ_COLORS[i%PROJ_COLORS.length];
     const active=(i===P.activeProj);
     const cone=new THREE.Mesh(projConeGeo,
@@ -1264,16 +1296,20 @@ function rebuildProjectors3D(){
         emissive:active?color:0x000000, emissiveIntensity:active?0.45:0.0}));
     cone.position.set(pr.projX,pr.projY,pr.projZ);
     orientZ(cone, projForwardFor(pr));   // cone local +Z -> forward direction
+    setOnTop(cone, active, 999);         // selected projector draws over the rest
     projGroup.add(cone);
     if(pr.enabled<0.5) return;           // disabled projector: no frustum
     const g=frustumGeometry(new THREE.Vector3(pr.projX,pr.projY,pr.projZ),
                             projForwardFor(pr), pr.projHFovDeg, pr.projAspect);
-    projGroup.add(new THREE.LineSegments(g,new THREE.LineBasicMaterial({color})));
+    const line=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color}));
+    setOnTop(line, active, 999);
+    projGroup.add(line);
   });
   // When the warp is frozen, draw the calibration pose as a ghost so the
   // divergence from the actual projector is visible.
   if(P.warpFollows<0.5){
     P.projectors.forEach((pr,i)=>{
+      if(pr.visible<0.5) return;         // hidden from the scene
       const cal=pr.cal;
       const color=PROJ_COLORS[i%PROJ_COLORS.length];
       const dir=projForwardFrom(cal.yaw,cal.pitch);
@@ -1281,10 +1317,13 @@ function rebuildProjectors3D(){
       const ghost=new THREE.Mesh(projConeGeo,
         new THREE.MeshBasicMaterial({color, transparent:true, opacity:0.25}));
       ghost.position.copy(pos); orientZ(ghost,dir);
+      setOnTop(ghost, i===P.activeProj, 998);
       projGroup.add(ghost);
       const g=frustumGeometry(pos, dir, cal.hFov, cal.aspect);
-      projGroup.add(new THREE.LineSegments(g,
-        new THREE.LineBasicMaterial({color, transparent:true, opacity:0.35})));
+      const gl=new THREE.LineSegments(g,
+        new THREE.LineBasicMaterial({color, transparent:true, opacity:0.35}));
+      setOnTop(gl, i===P.activeProj, 998);
+      projGroup.add(gl);
     });
   }
 }
