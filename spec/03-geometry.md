@@ -220,14 +220,21 @@ the game did not render. Both render black.
 
 ### Auto-aim
 
-Point the projector at screen centre `(0, 0, screenRadius)`:
+Point the projector at a target on the screen plane `z = screenRadius`, the screen
+midpoint shifted sideways by the projector's aim offset `aimX`:
 
 ```
-d = screenCentre − projPos
+target    = (aimX, screenBase + screenHeight/2, screenRadius)
+d         = target − projPos
 projYaw   = atan2(d.x, d.z)
 projPitch = atan2(d.y, sqrt(d.x² + d.z²))
 projRoll  = 0
 ```
+
+`aimX` defaults to 0, which is the screen centre. A non-zero offset lets each
+projector in a multi-projector rig aim at a different part of the screen (e.g. the
+left unit aims right, the right unit left) so their beams overlap across the arc
+instead of all converging on the centre.
 
 Aim is a convenience for beam coverage, not a correctness input — it changes which
 pixels land where, not what is geometrically correct. Contrast FR-12: the eye's aim is

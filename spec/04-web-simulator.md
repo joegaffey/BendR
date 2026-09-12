@@ -94,7 +94,8 @@ are specified in `03-geometry.md`.
 | Projector FOV | slider | 90° | Disabled while auto-fit is on |
 | Projector aspect | slider | 1.777 | 16:9 |
 | Source image | dropdown | Test Grid | Selects warp source content |
-| Auto-aim at screen centre | checkbox | on | Derives yaw/pitch from position |
+| Auto-aim at target | checkbox | on | Derives yaw/pitch from position |
+| Aim X offset | slider | 0 m | Shifts the auto-aim target sideways; point projectors at different parts of the screen. Disabled while auto-aim is off |
 | Auto-fit FOV to screen | checkbox | on | Derives FOV from screen coverage |
 | Show calibration grid | checkbox | on | Grid drawn in source space |
 | Grid lines | slider | 12 | Grid density |

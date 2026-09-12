@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { openApp, waitForRender, trackConsoleErrors, ORIGIN } from './helpers.js';
+import { setRange } from './golden.js';
+import { diffRatio } from './visual-diff.js';
 
 test.describe('BendR web simulator — smoke', () => {
   test('loads and renders both lower views with no console errors', async ({ page }) => {
@@ -53,6 +55,32 @@ test.describe('BendR web simulator — smoke', () => {
     expect(config).toHaveProperty('screen');
     expect(config).toHaveProperty('eye');
     expect(config).toHaveProperty('source');
+  });
+
+  test('aim X offset pans the auto-aim target', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: ORIGIN });
+    await openApp(page);
+
+    const aim = page.locator('.row:has-text("Aim X offset (m)") input[type=range]');
+    const sceneBefore = await page.locator('#scene').screenshot();
+    await setRange(aim, 0.5);
+    await waitForRender(page);
+
+    // The 3D marker/frustum must follow the aim target, not stay on screen centre.
+    const sceneAfter = await page.locator('#scene').screenshot();
+    expect(diffRatio(sceneBefore, sceneAfter)).toBeGreaterThan(0.002);
+
+    await page.getByRole('button', { name: 'Copy JSON' }).click();
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toContain('"version"');
+    const cfg = await page.evaluate(() => navigator.clipboard.readText().then(JSON.parse));
+
+    // Auto-aim should now point at (0.5, mid, radius): yaw = atan2(0.5 - x, radius - z).
+    const pr = cfg.projectors[0];
+    const expectedYaw = (Math.atan2(0.5 - pr.pose.x, cfg.screen.radius - pr.pose.z) * 180) / Math.PI;
+    expect(pr.pose.yaw).toBeCloseTo(expectedYaw, 1);
+    expect(Math.abs(pr.pose.yaw)).toBeGreaterThan(1); // sanity: it actually moved
   });
 
   test('loads a sim screenshot source without errors', async ({ page }) => {

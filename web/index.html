@@ -181,6 +181,7 @@ function makeProjector(i){
     projYaw: 0.0, projPitch: -15.0, projRoll: 0.0,
     projHFovDeg: 90.0, projAspect: 1.777,
     autoAim: 1.0,
+    aimX: 0.0,   // aim-target X offset (m) on the screen plane, for multi-projector coverage
     blendLeft: 0.0, blendRight: 0.0, blendTop: 0.0, blendBottom: 0.0,
     blackLevel: 0.0, gamma: 2.2, gain: 1.0,
   };
@@ -203,7 +204,7 @@ const P = {
 };
 
 const PROJ_KEYS = ['projX','projY','projZ','projYaw','projPitch','projRoll',
-  'projHFovDeg','projAspect','autoAim',
+  'projHFovDeg','projAspect','autoAim','aimX',
   'blendLeft','blendRight','blendTop','blendBottom','blackLevel','gamma','gain'];
 for(const key of PROJ_KEYS){
   Object.defineProperty(P, key, {
@@ -214,12 +215,21 @@ for(const key of PROJ_KEYS){
 }
 function activeProjector(){ return P.projectors[P.activeProj]; }
 
-// Auto-aim: point a projector at the screen center (0,0,screenRadius on +Z).
-// Overwrites its yaw/pitch from position when enabled.
+// Auto-aim target for a projector: the screen midpoint (mid-height, screenRadius)
+// shifted sideways by its aimX offset. Shared by applyAutoAim and the 3D marker so
+// the drawn frustum always matches the warp.
+function aimTarget(pr){
+  return new THREE.Vector3(pr.aimX, P.screenBase + P.screenHeight*0.5, P.screenRadius);
+}
+
+// Auto-aim: point a projector at its aim target. The target is the screen midpoint
+// (0, mid-height, screenRadius) shifted sideways by the projector's aimX offset, so
+// each projector in a multi-projector rig can be pointed at a different part of the
+// screen for coverage. Overwrites yaw/pitch from position when enabled.
 function applyAutoAim(pr){
   pr = pr || activeProjector();
   if(pr.autoAim < 0.5) return;
-  const target = {x:0, y:P.screenBase + P.screenHeight*0.5, z:P.screenRadius};
+  const target = aimTarget(pr);
   const dx = target.x - pr.projX;
   const dy = target.y - pr.projY;
   const dz = target.z - pr.projZ;
@@ -376,6 +386,7 @@ const SLIDER_DEFS = [
     ['projX','Pos X (m)',-4,4,0.01],
     ['projY','Height (m)',0,4,0.01],
     ['projZ','Pos Z (m)',-4,4,0.01],
+    ['aimX','Aim X offset (m)',-3,3,0.01],
     ['projYaw','Yaw (deg)',-60,60,0.1],
     ['projPitch','Pitch (deg)',-60,60,0.1],
     ['projRoll','Roll (deg)',-60,60,0.1],
@@ -594,7 +605,7 @@ for (const [cat, items] of SLIDER_DEFS) {
   if(cat==='Projector'){
     const row=document.createElement('div'); row.className='row check';
     autoAimEl=document.createElement('input'); autoAimEl.type='checkbox'; autoAimEl.checked=true;
-    const l=document.createElement('label'); l.textContent='Auto-aim at screen center';
+    const l=document.createElement('label'); l.textContent='Auto-aim at target';
     autoAimEl.addEventListener('change',()=>{
       P.autoAim=autoAimEl.checked?1:0;
       setAimSlidersDisabled(autoAimEl.checked);
@@ -635,7 +646,7 @@ function appendSlider(key,label,min,max,step){
     // Auto-aim derives yaw/pitch from projector position and screen shape —
     // reflect those computed values back into their sliders.
     if(P.autoAim>=0.5 &&
-       (key==='projX'||key==='projY'||key==='projZ'||
+       (key==='projX'||key==='projY'||key==='projZ'||key==='aimX'||
         key==='screenRadius'||key==='screenHeight'||key==='screenBase'))
       syncSlidersToParams();
   });
@@ -709,12 +720,16 @@ function appendSlider(key,label,min,max,step){
   row.appendChild(copy); row.appendChild(dl); sectionBody.appendChild(row);
 }
 
-// Enable/disable the manual aim sliders (yaw/pitch/roll) when auto-aim toggles.
-function setAimSlidersDisabled(disabled){
+// Reflect the auto-aim mode into the pose sliders. With auto-aim on, yaw/pitch/roll
+// are derived and read-only; the Aim X offset is the input that stays live. With
+// auto-aim off the offset has no effect, so it greys out.
+function setAimSlidersDisabled(autoAimOn){
   for(const key of ['projYaw','projPitch','projRoll']){
     const el=sliderEls[key];
-    if(el){ el.disabled=disabled; el.parentElement.style.opacity=disabled?0.45:1; }
+    if(el){ el.disabled=autoAimOn; el.parentElement.style.opacity=autoAimOn?0.45:1; }
   }
+  const aim=sliderEls['aimX'];
+  if(aim){ aim.disabled=!autoAimOn; aim.parentElement.style.opacity=autoAimOn?1:0.45; }
 }
 
 // Push current P values back into the slider inputs + labels (used after auto-aim
@@ -1404,14 +1419,12 @@ function projForwardFrom(yawDeg,pitchDeg){
 }
 
 // Build a projector's world-space forward direction from its pose.
-// In auto-aim mode this points at the screen center; otherwise it's derived
-// from yaw/pitch the same way the shader does (Ry*Rp applied to local +Z).
+// In auto-aim mode this points at the aim target (shared with applyAutoAim);
+// otherwise it's derived from yaw/pitch the same way the shader does
+// (Ry*Rp applied to local +Z).
 function projForwardFor(pr){
   if(pr.autoAim>=0.5){
-    // Must match applyAutoAim's target: the screen centre, which sits at
-    // screenBase + screenHeight/2 now that the screen is mounted above the floor.
-    return new THREE.Vector3(0, P.screenBase + P.screenHeight*0.5, P.screenRadius)
-      .sub(new THREE.Vector3(pr.projX,pr.projY,pr.projZ)).normalize();
+    return aimTarget(pr).sub(new THREE.Vector3(pr.projX,pr.projY,pr.projZ)).normalize();
   }
   return projForwardFrom(pr.projYaw, pr.projPitch);
 }
